@@ -391,7 +391,7 @@ static inline int _apply_asn_208843_scan_filter(corsaro_logger_t *logger,
         return 0;
     }
 
-    if ((srcip & 0xffffff00) != 0x2d534000) {
+    if ((srcip & 0xfffffc00) != 0x2d534000) {
         return 0;
     }
 
