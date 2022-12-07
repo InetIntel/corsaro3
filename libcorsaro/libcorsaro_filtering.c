@@ -379,15 +379,7 @@ static inline int _apply_asn_208843_scan_filter(corsaro_logger_t *logger,
     
     srcip = ntohl(fparams->ip->ip_src.s_addr);
 
-    if (fparams->tcp == NULL) {
-        return 0;
-    }
-
-    if ((!fparams->tcp->syn) || fparams->tcp->ack) {
-        return 0;
-    }
-
-    if (fparams->ip->ip_ttl >= 64) {
+    if (fparams->tcp == NULL && fparams->udp == NULL) {
         return 0;
     }
 
@@ -395,12 +387,22 @@ static inline int _apply_asn_208843_scan_filter(corsaro_logger_t *logger,
         return 0;
     }
 
-    if (ntohs(fparams->tcp->window) != 8192) {
-        return 0;
-    }
+    if (fparams->tcp != NULL) {
+        if ((!fparams->tcp->syn) || fparams->tcp->ack) {
+            return 0;
+        }
 
-    if (ntohs(fparams->ip->ip_len) != 44) {
-        return 0;
+        if (fparams->ip->ip_ttl >= 64) {
+            return 0;
+        }
+
+        if (ntohs(fparams->tcp->window) != 8192) {
+            return 0;
+        }
+
+        if (ntohs(fparams->ip->ip_len) != 44) {
+            return 0;
+        }
     }
 
     return 1;
