@@ -383,29 +383,30 @@ static inline int _apply_asn_208843_scan_filter(corsaro_logger_t *logger,
         return 0;
     }
 
-    if ((srcip & 0xfffffc00) != 0x2d534000) {
-        return 0;
+    if (((srcip & 0xfffffc00) == 0x2d534000) ||
+            ((srcip & 0xfffffc00) == 0xc2bbb000)) {
+
+        if (fparams->tcp != NULL) {
+            if ((!fparams->tcp->syn) || fparams->tcp->ack) {
+                return 0;
+            }
+
+            if (fparams->ip->ip_ttl >= 64) {
+                return 0;
+            }
+
+            if (ntohs(fparams->tcp->window) != 8192) {
+                return 0;
+            }
+
+            if (ntohs(fparams->ip->ip_len) != 44) {
+                return 0;
+            }
+        }
+
+        return 1;
     }
-
-    if (fparams->tcp != NULL) {
-        if ((!fparams->tcp->syn) || fparams->tcp->ack) {
-            return 0;
-        }
-
-        if (fparams->ip->ip_ttl >= 64) {
-            return 0;
-        }
-
-        if (ntohs(fparams->tcp->window) != 8192) {
-            return 0;
-        }
-
-        if (ntohs(fparams->ip->ip_len) != 44) {
-            return 0;
-        }
-    }
-
-    return 1;
+    return 0;
 }
 
 static inline int _apply_dns_resp_oddport_filter(corsaro_logger_t *logger,
@@ -1442,8 +1443,8 @@ int corsaro_apply_multiple_filters(corsaro_logger_t *logger,
                 if (torun[i].result) {
                     spoofedstate = 1;
                 } else {
-	            spoofedstate = 0;
-		}
+                    spoofedstate = 0;
+                }
                 break;
             case CORSARO_FILTERID_ERRATIC:
                 if (spoofedstate == 1) {
