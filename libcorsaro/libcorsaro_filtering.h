@@ -304,7 +304,7 @@ int corsaro_apply_port_tcp80_filter(corsaro_logger_t *logger,
         libtrace_packet_t *packet);
 int corsaro_apply_port_tcp5000_filter(corsaro_logger_t *logger,
         libtrace_packet_t *packet);
-nt corsaro_apply_port_tcp37215_filter(corsaro_logger_t *logger,
+int corsaro_apply_port_tcp37215_filter(corsaro_logger_t *logger,
         libtrace_packet_t *packet);
 int corsaro_apply_asn_208843_scan_filter(corsaro_logger_t *logger,
         libtrace_packet_t *packet);
