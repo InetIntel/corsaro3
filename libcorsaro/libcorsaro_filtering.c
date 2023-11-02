@@ -383,11 +383,11 @@ static inline int _apply_port_tcp37215_filter(corsaro_logger_t *logger,
         return 0;
     }
 
-    if (!tcp->syn) {
+    if (!fparams->tcp->syn) {
         return 0;
     }
 
-    if (tcp->ack) {
+    if (fparams->tcp->ack) {
         return 0;
     }
 
