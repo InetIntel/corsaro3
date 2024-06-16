@@ -335,6 +335,12 @@ static void parse_metric_limits(corsaro_report_config_t *conf,
                     ((1UL << CORSARO_METRIC_CLASS_MAXMIND_CONTINENT) |
                      (1UL << CORSARO_METRIC_CLASS_MAXMIND_COUNTRY));
         }
+        if (strcasecmp(name, "ipinfo") == 0) {
+            conf->allowedmetricclasses |=
+                    ((1UL << CORSARO_METRIC_CLASS_IPINFO_CONTINENT) |
+                     (1UL << CORSARO_METRIC_CLASS_IPINFO_REGION) |
+                     (1UL << CORSARO_METRIC_CLASS_IPINFO_COUNTRY));
+        }
         if (strcasecmp(name, "pfx2asn") == 0) {
             conf->allowedmetricclasses |=
                      (1UL << CORSARO_METRIC_CLASS_PREFIX_ASN);
@@ -639,6 +645,12 @@ int corsaro_report_finalise_config(corsaro_plugin_t *p,
                 "report plugin: tracking Netacq-Edge metrics");
         }
         if (conf->allowedmetricclasses &
+                (1 << CORSARO_METRIC_CLASS_IPINFO_CONTINENT))
+        {
+            corsaro_log(p->logger,
+                "report plugin: tracking IPInfo metrics");
+        }
+        if (conf->allowedmetricclasses &
                 (1 << CORSARO_METRIC_CLASS_MAXMIND_CONTINENT))
         {
             corsaro_log(p->logger, "report plugin: tracking Maxmind metrics");
@@ -657,6 +669,8 @@ int corsaro_report_finalise_config(corsaro_plugin_t *p,
     if (    (conf->allowedmetricclasses &
                         (1 << CORSARO_METRIC_CLASS_NETACQ_CONTINENT)) ||
             (conf->allowedmetricclasses &
+                        (1 << CORSARO_METRIC_CLASS_IPINFO_CONTINENT)) ||
+            (conf->allowedmetricclasses &
                         (1 << CORSARO_METRIC_CLASS_MAXMIND_CONTINENT))) {
 
         uint64_t todisable = 0;
@@ -665,6 +679,7 @@ int corsaro_report_finalise_config(corsaro_plugin_t *p,
                     "report plugin: geo-tagging limited to continents and countries");
             todisable |= (1 << CORSARO_METRIC_CLASS_NETACQ_REGION);
             todisable |= (1 << CORSARO_METRIC_CLASS_NETACQ_POLYGON);
+            todisable |= (1 << CORSARO_METRIC_CLASS_IPINFO_REGION);
 
             conf->allowedmetricclasses &= (~(todisable));
         } else {

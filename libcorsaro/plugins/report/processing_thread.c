@@ -197,6 +197,18 @@ static inline int netacq_tagged(corsaro_packet_tags_t *tags) {
     return 0;
 }
 
+/** Check if the IPInfo geo-location tags are valid for a tag set.
+ *
+ *  @param tags         The set of tags to evaluate.
+ *  @return 1 if the IPInfo tags are valid, 0 if they are not.
+ */
+static inline int ipinfo_tagged(corsaro_packet_tags_t *tags) {
+    if (tags->providers_used & (1 << IPMETA_PROVIDER_IPINFO)) {
+        return 1;
+    }
+    return 0;
+}
+
 /** Check if the prefix2asn tags are valid for a tag set.
  *
  *  @param tags         The set of tags to evaluate.
@@ -671,6 +683,25 @@ static int process_tags(corsaro_report_tracker_state_t *track,
                 CORSARO_METRIC_CLASS_MAXMIND_COUNTRY)) {
             PROCESS_SINGLE_TAG(CORSARO_METRIC_CLASS_MAXMIND_COUNTRY,
                     tags->maxmind_country, 0, 0);
+        }
+    }
+
+    if (ipinfo_tagged(tags)) {
+        if (IS_METRIC_ALLOWED(allowedmetricclasses,
+                CORSARO_METRIC_CLASS_IPINFO_CONTINENT)) {
+            PROCESS_SINGLE_TAG(CORSARO_METRIC_CLASS_IPINFO_CONTINENT,
+                    tags->ipinfo_continent, 0, 1);
+        }
+
+        if (IS_METRIC_ALLOWED(allowedmetricclasses,
+                CORSARO_METRIC_CLASS_IPINFO_COUNTRY)) {
+            PROCESS_SINGLE_TAG(CORSARO_METRIC_CLASS_IPINFO_COUNTRY,
+                    tags->ipinfo_country, 0, 1);
+        }
+        if (IS_METRIC_ALLOWED(allowedmetricclasses,
+                CORSARO_METRIC_CLASS_IPINFO_REGION)) {
+            PROCESS_SINGLE_TAG(CORSARO_METRIC_CLASS_IPINFO_REGION,
+                    ntohs(tags->ipinfo_region), 0, 1);
         }
     }
 

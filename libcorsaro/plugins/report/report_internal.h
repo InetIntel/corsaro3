@@ -123,6 +123,9 @@ typedef enum {
     CORSARO_METRIC_CLASS_ICMP_TYPECODE,
     CORSARO_METRIC_CLASS_NETACQ_REGION,
     CORSARO_METRIC_CLASS_NETACQ_POLYGON,
+    CORSARO_METRIC_CLASS_IPINFO_CONTINENT,
+    CORSARO_METRIC_CLASS_IPINFO_COUNTRY,
+    CORSARO_METRIC_CLASS_IPINFO_REGION,
     CORSARO_METRIC_CLASS_FILTER_CRITERIA,
     CORSARO_METRIC_CLASS_LAST,      // always have at end of enum
 } corsaro_report_metric_class_t;
@@ -264,6 +267,7 @@ typedef struct corsaro_report_iptracker {
     corsaro_report_iptracker_maps_t *next_maps;
 
     corsaro_report_savedtags_t netacq_saved;
+    corsaro_report_savedtags_t ipinfo_saved;
 
     /** Hash map containing the ongoing tallies for tags that should be
      *  counted towards the next interval. */
