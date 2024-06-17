@@ -139,6 +139,10 @@ typedef struct corsaro_tagger_glob {
      *  module */
     netacq_opts_t netacqtagopts;
 
+    /** The configuration options for the libipmeta IPInfo geolocation
+     *  module */
+    ipinfo_opts_t ipinfotagopts;
+
     corsaro_ipmeta_state_t *ipmeta_state;
     corsaro_ipmeta_state_t *prev_ipmeta_state;
     uint32_t ipmeta_version;

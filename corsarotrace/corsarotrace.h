@@ -130,6 +130,7 @@ typedef struct corsaro_trace_glob {
     pfx2asn_opts_t pfxtagopts;
     maxmind_opts_t maxtagopts;
     netacq_opts_t netacqtagopts;
+    ipinfo_opts_t ipinfotagopts;
 
 } corsaro_trace_global_t;
 

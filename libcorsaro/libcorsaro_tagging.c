@@ -50,6 +50,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
+#include <errno.h>
 
 #include <yaml.h>
 #include <libipmeta.h>
@@ -112,6 +113,9 @@ corsaro_packet_tagger_t *corsaro_create_packet_tagger(corsaro_logger_t *logger,
             tagger->providers ++;
         }
         if (ipmeta->netacqipmeta) {
+            tagger->providers ++;
+        }
+        if (ipmeta->ipinfoipmeta) {
             tagger->providers ++;
         }
 
@@ -199,6 +203,25 @@ static inline char *create_prefix2asn_option_string(corsaro_logger_t *logger,
     return NULL;
 }
 
+static inline char *create_ipinfo_option_string(corsaro_logger_t *logger,
+        ipinfo_opts_t *ipinfoopts) {
+
+    char space[MAXSPACE];
+    char fragment[FRAGSPACE];
+    char *nxt = space;
+    int used = 0;
+
+    if (ipinfoopts->filename) {
+        snprintf(fragment, FRAGSPACE, "-l %s ", ipinfoopts->filename);
+        COPY_STRING(space, MAXSPACE, used, fragment, "ipinfo");
+    }
+
+    if (used > 0) {
+        return strdup(space);
+    }
+    return NULL;
+}
+
 static inline char *create_netacq_option_string(corsaro_logger_t *logger,
         netacq_opts_t *acqopts) {
 
@@ -263,6 +286,10 @@ static char *create_ipmeta_options(corsaro_logger_t *logger,
         case IPMETA_PROVIDER_MAXMIND:
             opts = create_maxmind_option_string(logger,
                     (maxmind_opts_t *)options);
+            break;
+        case IPMETA_PROVIDER_IPINFO:
+            opts = create_ipinfo_option_string(logger,
+                    (ipinfo_opts_t *)options);
             break;
         case IPMETA_PROVIDER_NETACQ_EDGE:
             opts = create_netacq_option_string(logger,
@@ -419,6 +446,25 @@ static int update_maxmind_tags(corsaro_logger_t *logger,
     tags->providers_used |= (1 << IPMETA_PROVIDER_MAXMIND);
 
     return 0;
+}
+
+static int update_ipinfo_tags(corsaro_logger_t *logger,
+        ipmeta_record_t *rec, corsaro_packet_tags_t *tags,
+        corsaro_ipmeta_state_t *ipmeta_state) {
+
+    if (rec == NULL) {
+        return 0;
+    }
+
+    tags->ipinfo_continent = (*((uint16_t *)(rec->continent_code)));
+    tags->ipinfo_country = (*((uint16_t *)(rec->country_code)));
+
+    tags->ipinfo_region = htons(rec->region_code);
+
+    tags->providers_used |= (1 << IPMETA_PROVIDER_IPINFO);
+
+    return 0;
+
 }
 
 static int update_netacq_tags(corsaro_logger_t *logger,
@@ -598,6 +644,12 @@ static inline int _corsaro_tag_ip_packet(corsaro_packet_tagger_t *tagger,
                     return -1;
                 }
                 break;
+            case IPMETA_PROVIDER_IPINFO:
+                if (update_ipinfo_tags(tagger->logger, rec, tags,
+                        tagger->ipmeta_state) != 0) {
+                    return -1;
+                }
+                break;
             case IPMETA_PROVIDER_PFX2AS:
                 if (update_pfx2as_tags(tagger->logger, rec, tags) != 0) {
                     return -1;
@@ -715,6 +767,44 @@ int corsaro_update_tagged_loss_tracker(corsaro_tagged_loss_tracker_t *tracker,
 	}
 
 	return 0;
+}
+
+static int parse_ipinfo_tag_options(corsaro_logger_t *logger,
+        ipinfo_opts_t *opts, yaml_document_t *doc, yaml_node_t *confmap) {
+
+    yaml_node_t *key, *value;
+    yaml_node_pair_t *pair;
+
+    if (confmap->type != YAML_MAPPING_NODE) {
+        corsaro_log(logger, "IPInfo tagging config should be a map!");
+        return -1;
+    }
+
+    for (pair = confmap->data.mapping.pairs.start;
+            pair < confmap->data.mapping.pairs.top; pair ++) {
+        key = yaml_document_get_node(doc, pair->key);
+        value = yaml_document_get_node(doc, pair->value);
+
+        if (key->type == YAML_SCALAR_NODE && value->type == YAML_SCALAR_NODE
+                && strcmp((char *)key->data.scalar.value,
+                    "filelocation") == 0) {
+            if (opts->filename) {
+                free(opts->filename);
+            }
+            opts->filename = strdup((char *)value->data.scalar.value);
+        }
+
+        if (key->type == YAML_SCALAR_NODE && value->type == YAML_SCALAR_NODE
+                && strcmp((char *)key->data.scalar.value,
+                    "regionscsv") == 0) {
+            if (opts->regions_csv) {
+                free(opts->regions_csv);
+            }
+            opts->regions_csv = strdup((char *)value->data.scalar.value);
+        }
+    }
+    opts->enabled = 1;
+    return 0;
 }
 
 static int parse_netacq_tag_options(corsaro_logger_t *logger,
@@ -880,7 +970,8 @@ static int parse_maxmind_tag_options(corsaro_logger_t *logger,
 }
 
 void corsaro_free_tagging_provider_config(pfx2asn_opts_t *pfxopts,
-        maxmind_opts_t *maxopts, netacq_opts_t *netacqopts) {
+        maxmind_opts_t *maxopts, netacq_opts_t *netacqopts,
+        ipinfo_opts_t *ipinfoopts) {
 
     if (pfxopts->pfx2as_file) {
         free(pfxopts->pfx2as_file);
@@ -926,11 +1017,19 @@ void corsaro_free_tagging_provider_config(pfx2asn_opts_t *pfxopts,
         }
         libtrace_list_deinit(netacqopts->polygon_table_files);
     }
+
+    if (ipinfoopts->filename) {
+        free(ipinfoopts->filename);
+    }
+    if (ipinfoopts->regions_csv) {
+        free(ipinfoopts->regions_csv);
+    }
+
 }
 
 int corsaro_parse_tagging_provider_config(pfx2asn_opts_t *pfxopts,
 		maxmind_opts_t *maxopts, netacq_opts_t *netacqopts,
-        yaml_document_t *doc, yaml_node_t *provlist,
+        ipinfo_opts_t *ipinfoopts, yaml_document_t *doc, yaml_node_t *provlist,
         corsaro_logger_t *logger) {
 
     yaml_node_item_t *item;
@@ -969,6 +1068,15 @@ int corsaro_parse_tagging_provider_config(pfx2asn_opts_t *pfxopts,
                 }
                 provid = IPMETA_PROVIDER_NETACQ_EDGE;
             }
+            if (strcmp((char *)key->data.scalar.value, "ipinfo") == 0) {
+                if (parse_ipinfo_tag_options(logger,
+                        ipinfoopts, doc, value) != 0) {
+                    corsaro_log(logger,
+                            "error while parsing config for IPInfo tagging");
+                    continue;
+                }
+                provid = IPMETA_PROVIDER_IPINFO;
+            }
             if (strcmp((char *)key->data.scalar.value, "pfx2as") == 0) {
                 if (parse_pfx2as_tag_options(logger,
                        	pfxopts, doc, value) != 0) {
@@ -1005,7 +1113,7 @@ static void load_maxmind_country_labels(corsaro_logger_t *logger,
     ret = ipmeta_provider_maxmind_get_country_continent_list(&continents);
 
     if (count != ret) {
-        corsaro_log(logger, "libipmeta error: maxmind country array is notthe same length as the maxmind continent array?");
+        corsaro_log(logger, "libipmeta error: country array is not the same length as the continent array?");
         return;
     }
 
@@ -1066,6 +1174,66 @@ static void load_netacq_polygon_labels(corsaro_logger_t *logger,
     }
 }
 
+static void load_ipinfo_region_labels(corsaro_logger_t *logger,
+        char *csv_filename, corsaro_ipmeta_state_t *ipmeta_state) {
+    io_t *file;
+    char buffer[2048];
+    int read;
+    char *tok, *fqdn, *fqdn_tmp;
+    unsigned long reg_id;
+    PWord_t pval;
+
+    if ((file = wandio_create(csv_filename)) == NULL) {
+        corsaro_log(logger, "ERROR: failed to open file '%s'", csv_filename);
+        return;
+    }
+
+    while ((read = wandio_fgets(file, &buffer, 2048, 0)) > 0) {
+        tok = strtok(buffer, ",");
+        if (tok == NULL) {
+            corsaro_log(logger,
+                    "Malformed line in region csv file (should be id,fqid,name)");
+            corsaro_log(logger, "Line was: '%s'", buffer);
+            goto end;
+        }
+        if (strcmp(tok, "ioda_region_id") == 0) {
+            continue;
+        }
+        errno = 0;
+        reg_id = strtoul(tok, NULL, 10);
+        if (errno) {
+            corsaro_log(logger, "Invalid value for IODA region ID: %s", tok);
+            continue;
+        }
+
+        tok = strtok(NULL, ",");
+        if (tok == NULL) {
+            corsaro_log(logger,
+                    "Malformed line in region csv file (should be id,fqid,name)");
+            goto end;
+        }
+        fqdn_tmp = tok;
+        tok = strtok(NULL, ",");
+        if (tok == NULL) {
+            corsaro_log(logger,
+                    "Malformed line in region csv file (should be id,fqid,name)");
+            goto end;
+        }
+
+        JLI(pval, ipmeta_state->region_labels, reg_id);
+        if (*pval) {
+            continue;
+        }
+        fqdn = strdup(fqdn_tmp);
+        *pval = (Word_t) fqdn;
+
+        JLI(pval, ipmeta_state->recently_added_region_labels, reg_id);
+        *pval = (Word_t) fqdn;
+    }
+
+end:
+    wandio_destroy(file);
+}
 
 static void load_netacq_region_labels(corsaro_logger_t *logger,
         corsaro_ipmeta_state_t *ipmeta_state) {
@@ -1135,7 +1303,7 @@ static void load_netacq_country_labels(corsaro_logger_t *logger,
 
 void corsaro_load_ipmeta_data(corsaro_logger_t *logger, pfx2asn_opts_t *pfxopts,
         maxmind_opts_t *maxopts, netacq_opts_t *netacqopts,
-        corsaro_ipmeta_state_t *ipmeta_state) {
+        ipinfo_opts_t *ipinfoopts, corsaro_ipmeta_state_t *ipmeta_state) {
 
 	ipmeta_provider_t *prov;
     ipmeta_state->ipmeta = ipmeta_init(IPMETA_DS_PATRICIA);
@@ -1163,6 +1331,22 @@ void corsaro_load_ipmeta_data(corsaro_logger_t *logger, pfx2asn_opts_t *pfxopts,
 
         load_maxmind_country_labels(logger, ipmeta_state);
     }
+    if (ipinfoopts->enabled) {
+        prov = corsaro_init_ipmeta_provider(ipmeta_state->ipmeta,
+                IPMETA_PROVIDER_IPINFO, ipinfoopts, logger);
+
+        if (prov == NULL) {
+            corsaro_log(logger,
+                    "error while enabling IPInfo geo-location tagging.");
+        } else {
+            ipmeta_state->ipinfoipmeta = prov;
+        }
+        // this is correct -- the country labels are hard-coded into libipmeta
+        load_maxmind_country_labels(logger, ipmeta_state);
+        load_ipinfo_region_labels(logger, ipinfoopts->regions_csv,
+                ipmeta_state);
+    }
+
     if (netacqopts->enabled) {
         /* Netacq Edge geolocation */
         prov = corsaro_init_ipmeta_provider(ipmeta_state->ipmeta,

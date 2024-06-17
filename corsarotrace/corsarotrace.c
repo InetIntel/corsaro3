@@ -812,12 +812,12 @@ int main(int argc, char *argv[]) {
     }
 
     if (glob->pfxtagopts.enabled || glob->netacqtagopts.enabled ||
-            glob->maxtagopts.enabled) {
+            glob->maxtagopts.enabled || glob->ipinfotagopts.enabled) {
 
         glob->ipmeta_state = calloc(1, sizeof(corsaro_ipmeta_state_t));
         corsaro_load_ipmeta_data(glob->logger, &(glob->pfxtagopts),
                 &(glob->maxtagopts), &(glob->netacqtagopts),
-                glob->ipmeta_state);
+                &(glob->ipinfotagopts), glob->ipmeta_state);
 
         /* if we are doing our own tagging, we are not talking to a
          * tagger (and are probably doing post-processing of old

@@ -143,6 +143,40 @@ static void update_knownip_metric(corsaro_report_iptracker_t *track,
         }
         assert(filterid < CORSARO_FILTERID_MAX);
         m = &(maps->filters[filterid]);
+    } else if (metricclass == CORSARO_METRIC_CLASS_IPINFO_CONTINENT ||
+            metricclass == CORSARO_METRIC_CLASS_IPINFO_COUNTRY ||
+            metricclass == CORSARO_METRIC_CLASS_IPINFO_REGION) {
+
+        /* bit of a copy paste of NETACQ below, but I'm trying to break
+         * as little as possible when adding IPInfo support */
+        if (track->ipinfo_saved.next_saved == MAX_ASSOCIATED_METRICS) {
+            /* Ignore hierarchies that exceed our maximum array size */
+            /* XXX SHOULD NEVER HAPPEN FOR IPINFO? */
+            return;
+        }
+
+        track->ipinfo_saved.associated_metricids[
+                track->ipinfo_saved.next_saved] = metricid;
+        track->ipinfo_saved.next_saved ++;
+
+        if (track->ipinfo_saved.next_saved > 1) {
+            /* Don't count packets etc multiple times for each associated
+             * metric.
+             */
+            return;
+        }
+
+        if (issrc) {
+            track->ipinfo_saved.srcip = ipaddr;
+            track->ipinfo_saved.srcasn = asn;
+            track->ipinfo_saved.packets = tagptr->packets;
+            track->ipinfo_saved.bytes = tagptr->bytes;
+        } else {
+            track->ipinfo_saved.destip = ipaddr;
+        }
+
+        return;
+
     } else if (metricclass == CORSARO_METRIC_CLASS_NETACQ_CONTINENT ||
             metricclass == CORSARO_METRIC_CLASS_NETACQ_COUNTRY ||
             metricclass == CORSARO_METRIC_CLASS_NETACQ_REGION ||
@@ -607,6 +641,7 @@ static int process_iptracker_update_message(corsaro_report_iptracker_t *track,
 		ptr += sizeof(corsaro_report_single_ip_header_t);
 
         memset(&(track->netacq_saved), 0, sizeof(corsaro_report_savedtags_t));
+        memset(&(track->ipinfo_saved), 0, sizeof(corsaro_report_savedtags_t));
 
 		for (j = 0; j < iphdr->numtags; j++) {
 			tag = (corsaro_report_msg_tag_t *)ptr;
@@ -623,6 +658,11 @@ static int process_iptracker_update_message(corsaro_report_iptracker_t *track,
 
         if (track->netacq_saved.next_saved != 0) {
             update_knownip_metric_saved(track, &(track->netacq_saved),
+                    maps);
+        }
+
+        if (track->ipinfo_saved.next_saved != 0) {
+            update_knownip_metric_saved(track, &(track->ipinfo_saved),
                     maps);
         }
 

@@ -10,6 +10,9 @@ if [ -f /flowtuple/swiftcreds ]; then
         source /flowtuple/swiftcreds
 fi
 
+if [ -f /flowtuple/tmp.yaml ]; then
+    cp -f /flowtuple/tmp.yaml /flowtuple/config.yaml
+fi
 sed -i "s#PCAPURI#${1}#" /flowtuple/config.yaml
 sed -i "s#OUTPREFIX#${2}#" /flowtuple/config.yaml
 sed -i "s#MONITORID#${3}#" /flowtuple/config.yaml

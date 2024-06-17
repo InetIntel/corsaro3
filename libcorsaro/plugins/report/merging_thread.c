@@ -316,6 +316,24 @@ static inline int metric_to_strings(corsaro_report_merge_state_t *m,
             snprintf(res->metricval, 128, "%c%c", (int)(res->metricid & 0xff),
                     (int)((res->metricid >> 8) & 0xff));
             break;
+        case CORSARO_METRIC_CLASS_IPINFO_CONTINENT:
+            strncpy(res->metrictype, "geo.ipinfo", 128);
+            snprintf(res->metricval, 128, "%c%c", (int)(res->metricid & 0xff),
+                    (int)((res->metricid >> 8) & 0xff));
+            break;
+        case CORSARO_METRIC_CLASS_IPINFO_COUNTRY:
+            LOOKUP_GEOTAG_LABEL(m->country_labels, res->metricid)
+            STRIP_METRIC_VALUE(contkey, metrickey, remain, 128);
+            snprintf(res->metrictype, 256, "geo.ipinfo.%s", metrickey);
+            snprintf(res->metricval, 128, "%c%c", (int)(res->metricid & 0xff),
+                    (int)((res->metricid >> 8) & 0xff));
+            break;
+        case CORSARO_METRIC_CLASS_IPINFO_REGION:
+            LOOKUP_GEOTAG_LABEL(m->region_labels, res->metricid)
+            STRIP_METRIC_VALUE(contkey, metrickey, remain, 128);
+            snprintf(res->metrictype, 256, "geo.ipinfo.%s", metrickey);
+            snprintf(res->metricval, 128, "%s", remain);
+            break;
         case CORSARO_METRIC_CLASS_NETACQ_CONTINENT:
             strncpy(res->metrictype, "geo.netacuity", 128);
             snprintf(res->metricval, 128, "%c%c", (int)(res->metricid & 0xff),

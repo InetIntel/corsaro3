@@ -499,7 +499,8 @@ static void *ipmeta_reload_thread(void *tdata) {
                 "starting reload of IPmeta data files...");
         replace = calloc(1, sizeof(corsaro_ipmeta_state_t));
         corsaro_load_ipmeta_data(glob->logger, &(glob->pfxtagopts),
-            &(glob->maxtagopts), &(glob->netacqtagopts), replace);
+            &(glob->maxtagopts), &(glob->netacqtagopts), &(glob->ipinfotagopts),
+            replace);
 
         /* Send the replacement IPmeta data to all of the tagger threads */
         for (i = 0; i < glob->pkt_threads; i++) {
@@ -914,7 +915,8 @@ int main(int argc, char *argv[]) {
     glob->ipmeta_state = calloc(1, sizeof(corsaro_ipmeta_state_t));
     glob->prev_ipmeta_state = NULL;
     corsaro_load_ipmeta_data(glob->logger, &(glob->pfxtagopts),
-            &(glob->maxtagopts), &(glob->netacqtagopts), glob->ipmeta_state);
+            &(glob->maxtagopts), &(glob->netacqtagopts), &(glob->ipinfotagopts),
+            glob->ipmeta_state);
     gettimeofday(&tv, NULL);
     glob->ipmeta_version = tv.tv_sec;
     glob->ipmeta_state->last_reload = tv.tv_sec;

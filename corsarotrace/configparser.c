@@ -273,8 +273,8 @@ static int parse_remaining_config(corsaro_trace_global_t *glob,
     if (key->type == YAML_SCALAR_NODE && value->type == YAML_SEQUENCE_NODE
             && !strcmp((char *)key->data.scalar.value, "tagproviders")) {
         if (corsaro_parse_tagging_provider_config(&(glob->pfxtagopts),
-                    &(glob->maxtagopts), &(glob->netacqtagopts), doc, value,
-                    glob->logger) != 0) {
+                    &(glob->maxtagopts), &(glob->netacqtagopts),
+                    &(glob->ipinfotagopts), doc, value, glob->logger) != 0) {
             return -1;
         }
     }
@@ -436,6 +436,7 @@ corsaro_trace_global_t *corsaro_trace_init_global(char *filename, int logmode) {
     memset(&(glob->pfxtagopts), 0, sizeof(pfx2asn_opts_t));
     memset(&(glob->maxtagopts), 0, sizeof(maxmind_opts_t));
     memset(&(glob->netacqtagopts), 0, sizeof(netacq_opts_t));
+    memset(&(glob->ipinfotagopts), 0, sizeof(ipinfo_opts_t));
     glob->ipmeta_state = NULL;
 
     pthread_mutex_init(&(glob->mutex), NULL);
@@ -567,7 +568,8 @@ void corsaro_trace_free_global(corsaro_trace_global_t *glob) {
     }
 
     corsaro_free_tagging_provider_config(&(glob->pfxtagopts),
-            &(glob->maxtagopts), &(glob->netacqtagopts));
+            &(glob->maxtagopts), &(glob->netacqtagopts),
+            &(glob->ipinfotagopts));
 
     if (glob->ipmeta_state) {
         corsaro_free_ipmeta_state(glob->ipmeta_state);

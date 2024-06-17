@@ -102,6 +102,9 @@ enum {
     CORSARO_TAGID_SOURCEPORT,
     CORSARO_TAGID_DESTPORT,
     CORSARO_TAGID_PROTOCOL,
+    CORSARO_TAGID_IPINFO_REGION,
+    CORSARO_TAGID_IPINFO_COUNTRY,
+    CORSARO_TAGID_IPINFO_CONTINENT,
 
 };
 
@@ -118,6 +121,10 @@ typedef struct corsaro_packet_tags {
     /** The ID of the geo-location region for the source IP, as
      *  determined using the netacq-edge data */
     uint16_t netacq_region;
+
+    /** The ID of the geo-located region for the source IP, as
+     *  deetermined using the IPInfo data */
+    uint16_t ipinfo_region;
 
     /** The ID of the geo-location 'polygon' for the source IP, as
      *  determined using the netacq-edge data. Note that there can
@@ -139,6 +146,11 @@ typedef struct corsaro_packet_tags {
      *  Encoded as a uint16_t, one byte for each character. */
     uint16_t netacq_country;
 
+    /** The 2-letter code describing the geo-location country
+     *  for the source IP, as determined using the IPInfo data.
+     *  Encoded as a uint16_t, one byte for each character. */
+    uint16_t ipinfo_country;
+
     /** The source port used by the packet */
     uint16_t src_port;
 
@@ -154,6 +166,11 @@ typedef struct corsaro_packet_tags {
      *  for the source IP, as determined using the netacq-edge data.
      *  Encoded as a uint16_t, one byte for each character. */
     uint16_t netacq_continent;
+
+    /** The 2-letter code describing the geo-location continent
+     *  for the source IP, as determined using the IPInfo data.
+     *  Encoded as a uint16_t, one byte for each character. */
+    uint16_t ipinfo_continent;
 
     /** Bitmask showing which filters this packet matches, i.e.
      * is it spoofed, is it erratic, is it non-routable */
@@ -241,6 +258,8 @@ typedef struct corsaro_ipmeta_state {
     ipmeta_provider_t *maxmindipmeta;
     /** A instance of the Netacq-edge geolocation provider for libipmeta */
     ipmeta_provider_t *netacqipmeta;
+    /** A instance of the IPInfo geolocation provider for libipmeta */
+    ipmeta_provider_t *ipinfoipmeta;
     /** A instance of the prefix to ASN provider for libipmeta */
     ipmeta_provider_t *pfxipmeta;
 
@@ -316,6 +335,17 @@ typedef struct maxmind_options {
     uint8_t enabled;
 } maxmind_opts_t;
 
+typedef struct ipinfo_options {
+    /** Absolute path to the **pre-processed** ipinfo geo-location file */
+    char *filename;
+
+    /** Absolute path to the CSV file containing all IODA regions */
+    char *regions_csv;
+
+    /** Flag to indicate whether the provider should be enabled or not */
+    uint8_t enabled;
+
+} ipinfo_opts_t;
 
 /** Set of configuration options for the libipmeta netacq-edge geo-location
   * provider. */
@@ -364,7 +394,8 @@ corsaro_packet_tagger_t *corsaro_create_packet_tagger(corsaro_logger_t *logger,
  *  @param provid       The identifier for the provider to be configured.
  *  @param options      A pointer to a set of configuration options to be
  *                      applied to the provider (should point to one of
- *                      netacq_opts_t, maxmind_opts_t or pfx2asn_opts_t).
+ *                      netacq_opts_t, maxmind_opts_t, ipinfo_opts_t or
+ *                      pfx2asn_opts_t).
  *  @param logger       A corsaro logging instance to write any errors to.
  *  @return A pointer to a successfully configured libipmeta provider, or
  *          NULL if an error occurred.
@@ -430,15 +461,16 @@ void corsaro_free_tagged_loss_tracker(corsaro_tagged_loss_tracker_t *tracker);
 
 int corsaro_parse_tagging_provider_config(pfx2asn_opts_t *pfxopts,
         maxmind_opts_t *maxopts, netacq_opts_t *netacqopts,
-        yaml_document_t *doc, yaml_node_t *provlist,
+        ipinfo_opts_t *ipinfoopts, yaml_document_t *doc, yaml_node_t *provlist,
         corsaro_logger_t *logger);
 
 void corsaro_load_ipmeta_data(corsaro_logger_t *logger, pfx2asn_opts_t *pfxopts,
         maxmind_opts_t *maxopts, netacq_opts_t *netacqopts,
-        corsaro_ipmeta_state_t *ipmeta_state);
+        ipinfo_opts_t *ipinfoopts, corsaro_ipmeta_state_t *ipmeta_state);
 
 void corsaro_free_tagging_provider_config(pfx2asn_opts_t *pfxopts,
-        maxmind_opts_t *maxopts, netacq_opts_t *netacqopts);
+        maxmind_opts_t *maxopts, netacq_opts_t *netacqopts,
+        ipinfo_opts_t *ipinfoopts);
 #endif
 
 // vim: set sw=4 tabstop=4 softtabstop=4 expandtab :
