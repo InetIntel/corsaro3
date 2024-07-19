@@ -64,11 +64,16 @@
         goto trackerover; \
     }
 
-static inline corsaro_report_iptracker_maps_t *create_new_map_set() {
+static inline corsaro_report_iptracker_maps_t *create_new_map_set(
+        corsaro_report_iptracker_t *track) {
 
     corsaro_report_iptracker_maps_t *maps;
 
     maps = calloc(1, sizeof(corsaro_report_iptracker_maps_t));
+    if (track->geoasn_couplets) {
+        // TODO populate maps->geoasns with the valid couplets */
+
+    }
     return maps;
 }
 
@@ -120,13 +125,14 @@ static void update_knownip_metric(corsaro_report_iptracker_t *track,
 
     corsaro_metric_ip_hash_t *m;
     uint64_t metricid = tagptr->tagid;
-    uint64_t metricclass = (metricid >> 32);
+    uint64_t metricclass = tagptr->tagclass;
     uint32_t tocount = 0;
     int ret;
     PWord_t pval;
 
     if (metricclass == CORSARO_METRIC_CLASS_COMBINED) {
         m = &(maps->combined);
+        m->metricclass = CORSARO_METRIC_CLASS_COMBINED;
     } else if (metricclass == CORSARO_METRIC_CLASS_IP_PROTOCOL) {
         uint64_t ipproto = (metricid & 0xFFFFFFFF);
         if (maps->ipprotocols == NULL) {
@@ -135,6 +141,7 @@ static void update_knownip_metric(corsaro_report_iptracker_t *track,
 
         assert(ipproto < 256);
         m = &(maps->ipprotocols[ipproto]);
+        m->metricclass = CORSARO_METRIC_CLASS_IP_PROTOCOL;
 
     } else if (metricclass == CORSARO_METRIC_CLASS_FILTER_CRITERIA) {
         uint64_t filterid = (metricid & 0xFFFFFFFF);
@@ -143,6 +150,7 @@ static void update_knownip_metric(corsaro_report_iptracker_t *track,
         }
         assert(filterid < CORSARO_FILTERID_MAX);
         m = &(maps->filters[filterid]);
+        m->metricclass = CORSARO_METRIC_CLASS_FILTER_CRITERIA;
     } else if (metricclass == CORSARO_METRIC_CLASS_IPINFO_CONTINENT ||
             metricclass == CORSARO_METRIC_CLASS_IPINFO_COUNTRY ||
             metricclass == CORSARO_METRIC_CLASS_IPINFO_REGION) {
@@ -213,6 +221,28 @@ static void update_knownip_metric(corsaro_report_iptracker_t *track,
         }
 
         return;
+    } else if (metricclass == CORSARO_METRIC_CLASS_IPINFO_COUNTRY_PREFIX_ASN ||
+            metricclass == CORSARO_METRIC_CLASS_IPINFO_REGION_PREFIX_ASN) {
+
+        /* TODO confirm if this geo-asn couplet is in our whitelist */
+        JLG(pval, maps->geoasns, (Word_t)metricid);
+
+        if (pval != NULL) {
+            m = (corsaro_metric_ip_hash_t *)(*pval);
+        } else {
+            m = (corsaro_metric_ip_hash_t *)calloc(1,
+                    sizeof(corsaro_metric_ip_hash_t));
+
+            JLI(pval, maps->geoasns, (Word_t)metricid);
+            m->metricid = metricid;
+            m->metricclass = metricclass;
+            m->srcips = NULL;
+            m->destips = NULL;
+            m->srcasns = NULL;
+            m->packets = 0;
+            m->bytes = 0;
+            *pval = (Word_t)(m);
+        }
     } else {
         JLG(pval, maps->general, (Word_t)metricid);
 
@@ -224,6 +254,7 @@ static void update_knownip_metric(corsaro_report_iptracker_t *track,
 
             JLI(pval, maps->general, (Word_t)metricid);
             m->metricid = metricid;
+            m->metricclass = metricclass;
             m->srcips = NULL;
             m->destips = NULL;
             m->srcasns = NULL;
@@ -276,6 +307,7 @@ static void update_knownip_metric_saved(corsaro_report_iptracker_t *track,
                     sizeof(corsaro_metric_ip_hash_t));
         JLI(pval, maps->general, (Word_t)metricid);
         m->metricid = metricid;
+        m->metricclass = (metricid >> 32);
         memcpy(m->associated_metricids, saved->associated_metricids,
                 MAX_ASSOCIATED_METRICS * sizeof(uint64_t));
 
@@ -324,6 +356,22 @@ static void free_map_set(corsaro_report_iptracker_maps_t *maps) {
     if (maps == NULL) {
         return;
     }
+
+    if (maps->geoasns) {
+        corsaro_metric_ip_hash_t *ipiter;
+        Word_t index = 0, ret;
+        PWord_t pval;
+
+        JLF(pval, maps->geoasns, index);
+        while (pval) {
+            ipiter = (corsaro_metric_ip_hash_t *)(*pval);
+            free_metrichash(ipiter);
+            free(ipiter);
+            JLN(pval, maps->geoasns, index);
+        }
+        JLFA(ret, maps->geoasns);
+    }
+
 
     if (maps->general) {
         corsaro_metric_ip_hash_t *ipiter;
@@ -562,7 +610,7 @@ static void process_interval_reset_message(corsaro_report_iptracker_t *track,
      * already have some valid info in the "next" interval maps.
      */
     track->curr_maps = track->next_maps;
-    track->next_maps = create_new_map_set();
+    track->next_maps = create_new_map_set(track);
 trackerover:
 	return;
 }
@@ -591,6 +639,7 @@ static int process_iptracker_update_message(corsaro_report_iptracker_t *track,
 	uint32_t toalloc = 0;
     uint32_t tagsdone = 0;
     uint64_t metricid;
+    uint32_t metricclass;
     uint8_t allowed;
 
 	ZEROMQ_CHECK_MORE
@@ -646,8 +695,9 @@ static int process_iptracker_update_message(corsaro_report_iptracker_t *track,
 		for (j = 0; j < iphdr->numtags; j++) {
 			tag = (corsaro_report_msg_tag_t *)ptr;
             metricid = tag->tagid;
+            metricclass = tag->tagclass;
 
-            METRIC_ALLOWED((metricid >> 32), allowed);
+            METRIC_ALLOWED(metricclass, allowed);
             if (allowed) {
 			    update_knownip_metric(track, tag, iphdr->issrc,
 				        maps, iphdr->ipaddr, iphdr->sourceasn);
@@ -680,6 +730,96 @@ trackerover:
 	return -1;
 }
 
+static int init_geoasn_couplets(corsaro_report_iptracker_t *track) {
+
+    uint64_t alloced;
+    uint64_t *couplets = NULL;
+    uint64_t count;
+    char *tok;
+    uint64_t asn;
+    uint64_t key;
+    io_t *file;
+    char buffer[2048];
+    int read, rc = 1;
+
+    if (track->conf->geoasn_whitelist_file == NULL) {
+        track->geoasn_couplets = NULL;
+        track->geoasn_couplet_count = 0;
+        return 0;
+    }
+
+    count = 0;
+    alloced = 2048;
+    couplets = calloc(alloced, sizeof(uint64_t));
+
+    if ((file = wandio_create(track->conf->geoasn_whitelist_file)) == NULL) {
+        corsaro_log(track->logger,
+                "report plugin: failed to open geoasn whitelist file '%s'",
+                track->conf->geoasn_whitelist_file);
+        goto err;
+    }
+
+    while ((read = wandio_fgets(file, &buffer, 2048, 0)) > 0) {
+        if (strlen(buffer) == 0) {
+            continue;
+        }
+
+        tok = strtok(buffer, ",");
+        if (tok == NULL) {
+            corsaro_log(track->logger,
+                    "report plugin: malformed line in geoasn whitelist file: %s",
+                    buffer);
+            goto err;
+        }
+
+        errno = 0;
+        asn = strtoul(tok, NULL, 10);
+        if (errno) {
+            corsaro_log(track->logger,
+                    "report plugin: invalid ASN field in geoasn whitelist file: %s", tok);
+            goto err;
+        }
+
+        while ((tok = strtok(NULL, ",")) != NULL) {
+            if (tok[0] >= '0' && tok[0] <= '9') {
+                /* it is a region ID */
+                errno = 0;
+                key = strtoul(tok, NULL, 10);
+                if (errno || key > 65535) {
+                    corsaro_log(track->logger,
+                            "report plugin: invalid region ID in geoasn whitelist file: %s", tok);
+                    goto err;
+                }
+                key += (asn << 32);
+            } else {
+                /* it is a country (hopefully) */
+                if (strlen(tok) != 2) {
+                    corsaro_log(trac->logger,
+                            "report plugin: invalid country code in geoasn whitelist file: %s", tok);
+                    goto err;
+                }
+
+                key = (asn << 32) + (tok[0] << 16) + (tok[1] << 24);
+            }
+            while (count >= alloc) {
+                couplets = realloc((alloc + 2048) * sizeof(uint64_t));
+                alloc += 2048;
+            }
+            couplets[count] = key;
+            count ++;
+        }
+    }
+    wandio_destroy(file);
+
+
+    track->geoasn_couplets = couplets;
+    track->geoasn_couplet_count = count;
+    return 1;
+err:
+    free(couplets);
+    return -1;
+
+}
 
 /** Routine for the IP tracker threads
  *
@@ -694,8 +834,13 @@ void *start_iptracker(void *tdata) {
 
     track = (corsaro_report_iptracker_t *)tdata;
 
-    track->curr_maps = create_new_map_set();
-    track->next_maps = create_new_map_set();
+    if (init_geoasn_couplets(track) < 0) {
+        corsaro_log(track->logger,
+                "WARNING: unable to parse geoasn whitelist file -- NO GEOASN metrics will be reported");
+    }
+
+    track->curr_maps = create_new_map_set(track);
+    track->next_maps = create_new_map_set(track);
 
     /* haltphases:
      * 0 = running
@@ -773,6 +918,10 @@ void *start_iptracker(void *tdata) {
     /* Thread is ending, tidy up everything */
     free_map_set(track->curr_maps);
     free_map_set(track->next_maps);
+
+    if (track->couplets) {
+        free(track->couplets);
+    }
     pthread_exit(NULL);
 }
 

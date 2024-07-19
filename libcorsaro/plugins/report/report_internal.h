@@ -73,7 +73,7 @@
  *  number that we can use as a numeric hash key.
   */
 #define GEN_METRICID(class, val) \
-      ((((uint64_t) class) << 32) + ((uint64_t)val))
+      ((((uint64_t) class) << 32) + ((uint64_t)val) & 0xFFFFFFFF)
 
 
 #define IS_METRIC_ALLOWED(allowedmetrics, metric) \
@@ -126,6 +126,8 @@ typedef enum {
     CORSARO_METRIC_CLASS_IPINFO_CONTINENT,
     CORSARO_METRIC_CLASS_IPINFO_COUNTRY,
     CORSARO_METRIC_CLASS_IPINFO_REGION,
+    CORSARO_METRIC_CLASS_IPINFO_COUNTRY_PREFIX_ASN,
+    CORSARO_METRIC_CLASS_IPINFO_REGION_PREFIX_ASN,
     CORSARO_METRIC_CLASS_FILTER_CRITERIA,
     CORSARO_METRIC_CLASS_LAST,      // always have at end of enum
 } corsaro_report_metric_class_t;
@@ -161,9 +163,11 @@ typedef struct corsaro_ip_hash {
 /** Structure used to store the tallied statistics for a single metric */
 typedef struct corsaro_metric_ip_hash_t {
 
-    /** The metric ID -- upper 32 bits are the metric type, lower 32 bits
-     *  are the metric value. */
+    /** The metric ID -- for the general map, the upper 32 bits are the metric
+     * type, lower 32 bits are the metric value. */
     uint64_t metricid;
+
+    corsaro_report_metric_class_t metricclass;
 
     uint64_t associated_metricids[MAX_ASSOCIATED_METRICS];
 
@@ -213,6 +217,7 @@ typedef struct corsaro_report_iptracker_maps {
     corsaro_metric_ip_hash_t *ipprotocols;
     corsaro_metric_ip_hash_t *filters;
 
+    Pvoid_t geoasns;
     Pvoid_t general;
 } corsaro_report_iptracker_maps_t;
 
@@ -292,6 +297,10 @@ typedef struct corsaro_report_iptracker {
      *  This is copied straight from the global config.
      */
     uint64_t allowedmetricclasses;
+
+    uint64_t *geoasn_couplets;
+    uint64_t geoasn_couplet_count;
+
 } corsaro_report_iptracker_t;
 
 typedef struct allowed_ports {
@@ -386,15 +395,18 @@ struct corsaro_report_config {
      */
     corsaro_report_ipcount_conf_t src_ipcount_conf;
     corsaro_report_ipcount_conf_t dst_ipcount_conf;
+
+    const char *geoasn_whitelist_file;
 };
 
 
 
 /** The statistics for a single IP + tag within an IP tracker update message */
 typedef struct corsaro_report_msg_tag {
-    /** Unique ID for the tag -- upper 32 bits are tag class, lower 32 bits
-     *  are the tag value.
-     */
+    /* The metric that this tag correspnds to */
+    corsaro_report_metric_class_t tagclass;
+
+    /** Unique ID for the tag */
     uint64_t tagid;
 
     /** Number of bytes sent by this IP address matching this tag */
@@ -467,9 +479,11 @@ typedef struct corsaro_report_interim {
  *  an interval.
  */
 typedef struct corsaro_report_result {
-    /** The metric ID -- upper 32 bits are the metric type, lower 32 bits
-     *  are the metric value. */
+    /** The metric ID -- for most metrics, the upper 32 bits are the metric
+     *  type, lower 32 bits are the metric value. */
     uint64_t metricid;
+
+    corsaro_report_metric_class_t metricclass;
 
     /** Total number of packets tagged with this metric */
     uint64_t pkt_cnt;

@@ -343,7 +343,9 @@ static void parse_metric_limits(corsaro_report_config_t *conf,
         }
         if (strcasecmp(name, "pfx2asn") == 0) {
             conf->allowedmetricclasses |=
-                     (1UL << CORSARO_METRIC_CLASS_PREFIX_ASN);
+                     ((1UL << CORSARO_METRIC_CLASS_PREFIX_ASN) |
+                      (1UL << CORSARO_METRIC_CLASS_IPINFO_COUNTRY_PREFIX_ASN) |
+                      (1UL << CORSARO_METRIC_CLASS_IPINFO_REGION_PREFIX_ASN));
         }
 
         if (strcasecmp(name, "filter") == 0) {
@@ -393,6 +395,7 @@ int corsaro_report_parse_config(corsaro_plugin_t *p, yaml_document_t *doc,
     conf->src_ipcount_conf.pfxbits = 32;
     conf->dst_ipcount_conf.method = REPORT_IPCOUNT_METHOD_ALL;
     conf->dst_ipcount_conf.pfxbits = 32;
+    conf->geoasn_whitelist_file = NULL;
 
 
     if (options->type != YAML_MAPPING_NODE) {
@@ -529,6 +532,16 @@ int corsaro_report_parse_config(corsaro_plugin_t *p, yaml_document_t *doc,
 
         if (key->type == YAML_SCALAR_NODE && value->type == YAML_SCALAR_NODE
                 && strcmp((char *)key->data.scalar.value,
+                    "geoasn_whitelist_file") == 0) {
+            if (conf->geoasn_whitelist_file) {
+                free(conf->geoasn_whitelist_file);
+            }
+            conf->geoasn_whitelist_file =
+                    strdup((char *)value->data.scalar.value);
+        }
+
+        if (key->type == YAML_SCALAR_NODE && value->type == YAML_SCALAR_NODE
+                && strcmp((char *)key->data.scalar.value,
                     "output_format") == 0) {
            if (strcmp((char *)value->data.scalar.value, "avro") == 0) {
                 conf->outformat = CORSARO_OUTPUT_AVRO;
@@ -600,6 +613,15 @@ int corsaro_report_finalise_config(corsaro_plugin_t *p,
     corsaro_log(p->logger,
             "report plugin: labeling all output rows with '%s'",
             conf->outlabel);
+
+    if (conf->geoasn_whitelist_file) {
+        corsaro_log(p->logger,
+                "report plugin: reading valid geoasn couplets from '%s'",
+                conf->geoasn_whitelist_file);
+    } else {
+        corsaro_log(p->logger,
+                "report plugin: no geoasn couplet whitelist specified");
+    }
 
     if (conf->outformat == CORSARO_OUTPUT_AVRO) {
         corsaro_log(p->logger,
@@ -834,6 +856,9 @@ void corsaro_report_destroy_self(corsaro_plugin_t *p) {
         conf = (corsaro_report_config_t *)(p->config);
         if (conf->outlabel) {
             free(conf->outlabel);
+        }
+        if (conf->geoasn_whitelist_file) {
+            free(conf->geoasn_whitelist_file);
         }
 
         /* Hopefully the tracker threads have joined by this point... */
