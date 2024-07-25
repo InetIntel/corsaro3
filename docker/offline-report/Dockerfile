@@ -1,11 +1,11 @@
-FROM ubuntu:bionic AS builder
+FROM ubuntu:focal AS builder
 
 ENV DEBIAN_FRONTEND=noninteractive
 
 WORKDIR /report
 
 RUN apt-get -y update && apt-get -y install apt-transport-https \
-               curl lsb-release gnupg sudo
+               curl lsb-release gnupg sudo wget ssl-cert ca-certificates
 
 RUN curl -1sLf 'https://dl.cloudsmith.io/public/wand/libwandio/cfg/setup/bash.deb.sh' | bash
 RUN curl -1sLf 'https://dl.cloudsmith.io/public/wand/libwandder/cfg/setup/bash.deb.sh' | bash
@@ -15,6 +15,10 @@ RUN curl -1sLf 'https://dl.cloudsmith.io/public/wand/libtrace/cfg/setup/bash.deb
 RUN echo "deb https://pkg.caida.org/os/ubuntu $(lsb_release -sc) main" | tee /etc/apt/sources.list.d/caida.list
 
 RUN curl -so /etc/apt/trusted.gpg.d/caida.gpg https://pkg.caida.org/os/ubuntu/keyring.gpg
+
+RUN wget -O - https://inetintel.cc.gatech.edu/packages/inetintel-packages.gpg.key | gpg --dearmor | tee /usr/share/keyrings/inetintel-keyring.gpg > /dev/null
+
+RUN echo "deb [signed-by=/usr/share/keyrings/inetintel-keyring.gpg] https://inetintel.cc.gatech.edu/packages/$(lsb_release -sc)/ $(lsb_release -sc) main" |  tee -a /etc/apt/sources.list.d/inetintel.list
 
 RUN apt-get -y update && apt-get -y install \
         autoconf \
@@ -59,18 +63,18 @@ RUN apt-get -y update && apt-get -y install \
         zlib1g-dev
 
 # TODO: switch back to using debian packages
-RUN git clone https://github.com/InetIntel/corsaro3 && cd corsaro3 && sed -i "s/alistairking/CAIDA/g" .gitmodules && sed -i "s/git:\/\//https:\/\//g" .gitmodules && git submodule init && git submodule update
+RUN git clone https://github.com/InetIntel/corsaro3 && cd corsaro3 && git submodule init && git submodule update
 
 RUN cd corsaro3 && autoreconf -vfi && ./configure && make && make install && ldconfig
 
 RUN tar -cvf /report/libcorsaro.tar /usr/local/lib/libcorsaro*
 
-FROM ubuntu:bionic
+FROM ubuntu:focal
 
 WORKDIR /report
 
 RUN apt-get -y update && apt-get -y install apt-transport-https \
-                curl lsb-release gnupg sudo
+                curl lsb-release gnupg sudo wget ssl-cert ca-certificates
 
 RUN curl -1sLf 'https://dl.cloudsmith.io/public/wand/libwandio/cfg/setup/bash.deb.sh' | bash
 RUN curl -1sLf 'https://dl.cloudsmith.io/public/wand/libwandder/cfg/setup/bash.deb.sh' | bash
@@ -78,6 +82,12 @@ RUN curl -1sLf 'https://dl.cloudsmith.io/public/wand/libtrace/cfg/setup/bash.deb
 RUN echo "deb https://pkg.caida.org/os/ubuntu $(lsb_release -sc) main" | tee /etc/apt/sources.list.d/caida.list
 
 RUN curl -so /etc/apt/trusted.gpg.d/caida.gpg https://pkg.caida.org/os/ubuntu/keyring.gpg
+
+RUN wget -O - https://inetintel.cc.gatech.edu/packages/inetintel-packages.gpg.key | gpg --dearmor | tee /usr/share/keyrings/inetintel-keyring.gpg > /dev/null
+
+RUN echo "deb [signed-by=/usr/share/keyrings/inetintel-keyring.gpg] https://inetintel.cc.gatech.edu/packages/$(lsb_release -sc)/ $(lsb_release -sc) main" |  tee -a /etc/apt/sources.list.d/inetintel.list
+
+
 
 RUN apt-get -y update && apt-get -y install \
         libavro23 \
