@@ -1025,8 +1025,8 @@ static void update_tracker_results(Pvoid_t *results,
             }
 
             update_merged_metric(results, iter, conf,
-                    iter->associated_metricids[i] >> 32,
-                    (iter->associated_metricids[i] & 0xFFFFFFFF),
+                    iter->associated_metricclasses[i],
+                    iter->associated_metricids[i],
                     ts, subtrees_seen, 0);
         }
 

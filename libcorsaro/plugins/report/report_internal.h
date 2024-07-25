@@ -170,6 +170,7 @@ typedef struct corsaro_metric_ip_hash_t {
     corsaro_report_metric_class_t metricclass;
 
     uint64_t associated_metricids[MAX_ASSOCIATED_METRICS];
+    uint64_t associated_metricclasses[MAX_ASSOCIATED_METRICS];
 
     /** Unique source IPs associated with this metric */
     Pvoid_t srcips;
@@ -223,6 +224,7 @@ typedef struct corsaro_report_iptracker_maps {
 
 typedef struct corsaro_report_savedtags {
     uint64_t associated_metricids[MAX_ASSOCIATED_METRICS];
+    uint64_t associated_metricclasses[MAX_ASSOCIATED_METRICS];
     uint64_t next_saved;
 
     uint32_t srcip;

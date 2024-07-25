@@ -192,6 +192,8 @@ static void update_knownip_metric(corsaro_report_iptracker_t *track,
 
         track->ipinfo_saved.associated_metricids[
                 track->ipinfo_saved.next_saved] = metricid;
+        track->ipinfo_saved.associated_metricclasses[
+                track->ipinfo_saved.next_saved] = metricclass;
         track->ipinfo_saved.next_saved ++;
 
         if (track->ipinfo_saved.next_saved > 1) {
@@ -229,6 +231,8 @@ static void update_knownip_metric(corsaro_report_iptracker_t *track,
 
         track->netacq_saved.associated_metricids[
                 track->netacq_saved.next_saved] = metricid;
+        track->netacq_saved.associated_metricclasses[
+                track->netacq_saved.next_saved] = metricclass;
         track->netacq_saved.next_saved ++;
 
         if (track->netacq_saved.next_saved > 1) {
@@ -307,6 +311,7 @@ static void update_knownip_metric_saved(corsaro_report_iptracker_t *track,
         corsaro_report_iptracker_maps_t *maps) {
 
     uint64_t metricid;
+    uint64_t metricclass;
     corsaro_metric_ip_hash_t *m;
     int ret;
     PWord_t pval;
@@ -314,6 +319,7 @@ static void update_knownip_metric_saved(corsaro_report_iptracker_t *track,
 
     assert(saved->next_saved > 0);
     metricid = saved->associated_metricids[saved->next_saved - 1];
+    metricclass = saved->associated_metricclasses[saved->next_saved - 1];
 
     JLG(pval, maps->general, (Word_t)metricid);
     if (pval != NULL) {
@@ -323,8 +329,10 @@ static void update_knownip_metric_saved(corsaro_report_iptracker_t *track,
                     sizeof(corsaro_metric_ip_hash_t));
         JLI(pval, maps->general, (Word_t)metricid);
         m->metricid = metricid;
-        m->metricclass = (metricid >> 32);
+        m->metricclass = metricclass;
         memcpy(m->associated_metricids, saved->associated_metricids,
+                MAX_ASSOCIATED_METRICS * sizeof(uint64_t));
+        memcpy(m->associated_metricclasses, saved->associated_metricclasses,
                 MAX_ASSOCIATED_METRICS * sizeof(uint64_t));
 
         m->srcips = NULL;
