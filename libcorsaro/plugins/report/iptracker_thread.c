@@ -68,10 +68,37 @@ static inline corsaro_report_iptracker_maps_t *create_new_map_set(
         corsaro_report_iptracker_t *track) {
 
     corsaro_report_iptracker_maps_t *maps;
+    size_t i;
+    PWord_t pval;
+    corsaro_metric_ip_hash_t *m;
 
     maps = calloc(1, sizeof(corsaro_report_iptracker_maps_t));
-    if (track->geoasn_couplets) {
-        // TODO populate maps->geoasns with the valid couplets */
+    if (track->geoasn_couplets && track->geoasn_couplet_count > 0) {
+        // populate maps->geoasns with the valid couplets */
+        for (i = 0; i < track->geoasn_couplet_count; i++) {
+            JLG(pval, maps->geoasns, track->geoasn_couplets[i]);
+            if (pval != NULL) {
+                /* already in here? */
+                continue;
+            }
+            m = (corsaro_metric_ip_hash_t *)calloc(1,
+                    sizeof(corsaro_metric_ip_hash_t));
+
+            JLI(pval, maps->geoasns, (Word_t)track->geoasn_couplets[i]);
+            m->metricid = track->geoasn_couplets[i];
+            if ((m->metricid & 0xFFFF) != 0) {
+                /* region ID */
+                m->metricclass = CORSARO_METRIC_CLASS_IPINFO_REGION_PREFIX_ASN;
+            } else {
+                m->metricclass = CORSARO_METRIC_CLASS_IPINFO_COUNTRY_PREFIX_ASN;
+            }
+            m->srcips = NULL;
+            m->destips = NULL;
+            m->srcasns = NULL;
+            m->packets = 0;
+            m->bytes = 0;
+            *pval = (Word_t)(m);
+        }
 
     }
     return maps;
@@ -224,24 +251,13 @@ static void update_knownip_metric(corsaro_report_iptracker_t *track,
     } else if (metricclass == CORSARO_METRIC_CLASS_IPINFO_COUNTRY_PREFIX_ASN ||
             metricclass == CORSARO_METRIC_CLASS_IPINFO_REGION_PREFIX_ASN) {
 
-        /* TODO confirm if this geo-asn couplet is in our whitelist */
+        /* confirm if this geo-asn couplet is in our whitelist */
         JLG(pval, maps->geoasns, (Word_t)metricid);
 
         if (pval != NULL) {
             m = (corsaro_metric_ip_hash_t *)(*pval);
         } else {
-            m = (corsaro_metric_ip_hash_t *)calloc(1,
-                    sizeof(corsaro_metric_ip_hash_t));
-
-            JLI(pval, maps->geoasns, (Word_t)metricid);
-            m->metricid = metricid;
-            m->metricclass = metricclass;
-            m->srcips = NULL;
-            m->destips = NULL;
-            m->srcasns = NULL;
-            m->packets = 0;
-            m->bytes = 0;
-            *pval = (Word_t)(m);
+            return;
         }
     } else {
         JLG(pval, maps->general, (Word_t)metricid);
@@ -287,8 +303,8 @@ static void update_knownip_metric(corsaro_report_iptracker_t *track,
 }
 
 static void update_knownip_metric_saved(corsaro_report_iptracker_t *track,
-        corsaro_report_savedtags_t *saved, corsaro_report_iptracker_maps_t *maps)
-{
+        corsaro_report_savedtags_t *saved,
+        corsaro_report_iptracker_maps_t *maps) {
 
     uint64_t metricid;
     corsaro_metric_ip_hash_t *m;
@@ -794,23 +810,24 @@ static int init_geoasn_couplets(corsaro_report_iptracker_t *track) {
             } else {
                 /* it is a country (hopefully) */
                 if (strlen(tok) != 2) {
-                    corsaro_log(trac->logger,
+                    corsaro_log(track->logger,
                             "report plugin: invalid country code in geoasn whitelist file: %s", tok);
                     goto err;
                 }
 
                 key = (asn << 32) + (tok[0] << 16) + (tok[1] << 24);
             }
-            while (count >= alloc) {
-                couplets = realloc((alloc + 2048) * sizeof(uint64_t));
-                alloc += 2048;
+            while (count >= alloced) {
+                couplets = realloc(couplets,
+                        (alloced + 2048) * sizeof(uint64_t));
+                alloced += 2048;
             }
             couplets[count] = key;
             count ++;
         }
     }
     wandio_destroy(file);
-
+    assert(0);
 
     track->geoasn_couplets = couplets;
     track->geoasn_couplet_count = count;
@@ -919,8 +936,8 @@ void *start_iptracker(void *tdata) {
     free_map_set(track->curr_maps);
     free_map_set(track->next_maps);
 
-    if (track->couplets) {
-        free(track->couplets);
+    if (track->geoasn_couplets) {
+        free(track->geoasn_couplets);
     }
     pthread_exit(NULL);
 }
