@@ -103,7 +103,7 @@
 #define ADD_EMPTY_RESULT(metricclass, metricval) \
     if (IS_METRIC_ALLOWED(conf->allowedmetricclasses, metricclass)) { \
         metricid = GEN_METRICID(metricclass, metricval); \
-        r = new_result(metricid, conf->outlabel, ts); \
+        r = new_result(metricclass, metricid, conf->outlabel, ts); \
         JLI(pval, *results, (Word_t)metricid); \
         *pval = (Word_t)r; \
     }
@@ -124,6 +124,8 @@ typedef struct corsaro_report_merge_state {
      *  libtimeseries instance.
      */
     Pvoid_t metrickp_keys;
+
+    Pvoid_t metrickp_keys_geoasn;
 
     /** Timestamp from the last label update that we received successfully
      *  from the tagger.
@@ -273,7 +275,7 @@ static inline int metric_to_strings(corsaro_report_merge_state_t *m,
      * Hopefully, these will match the strings that were used by
      * previous instances of this plugin...
      */
-    switch(res->metricid >> 32) {
+    switch(res->metricclass) {
         case CORSARO_METRIC_CLASS_COMBINED:
             strncpy(res->metrictype, "overall", 128);
             res->metricval[0] = '\0';
@@ -334,6 +336,18 @@ static inline int metric_to_strings(corsaro_report_merge_state_t *m,
             snprintf(res->metrictype, 256, "geo.ipinfo.%s", metrickey);
             snprintf(res->metricval, 128, "%s", remain);
             break;
+        case CORSARO_METRIC_CLASS_IPINFO_REGION_PREFIX_ASN:
+            snprintf(res->metrictype, 256, "geoasn.ipinfo.region");
+            snprintf(res->metricval, 128, "%lu.%lu", (res->metricid >> 32),
+                    (res->metricid & 0xFFFF));
+            break;
+        case CORSARO_METRIC_CLASS_IPINFO_COUNTRY_PREFIX_ASN:
+            snprintf(res->metrictype, 256, "geoasn.ipinfo.country");
+            snprintf(res->metricval, 128, "%lu.%c%c", (res->metricid >> 32),
+                    (int)((res->metricid >> 16) & 0xFF),
+                    (int)((res->metricid >> 24) & 0xFF));
+            break;
+
         case CORSARO_METRIC_CLASS_NETACQ_CONTINENT:
             strncpy(res->metrictype, "geo.netacuity", 128);
             snprintf(res->metricval, 128, "%c%c", (int)(res->metricid & 0xff),
@@ -564,6 +578,7 @@ static int report_write_libtimeseries(corsaro_plugin_t *p,
     corsaro_report_result_t *r;
     Word_t index = 0, judyret;
     PWord_t pval;
+    Pvoid_t *libts_keys;
 
     JLF(pval, *results, index);
 
@@ -576,14 +591,23 @@ static int report_write_libtimeseries(corsaro_plugin_t *p,
          * maxmind tagging, don't write a bunch of 0s for each
          * country.
          */
-        if ((subtreemask & (1 << (r->metricid >> 32))) == 0) {
+        if ((subtreemask & (1 << (r->metricclass))) == 0) {
             J1FA(judyret, r->uniq_src_asns);
             free(r);
             JLN(pval, *results, index);
             continue;
         }
 
-        JLG(pval, m->metrickp_keys, r->metricid);
+        switch(r->metricclass) {
+            case CORSARO_METRIC_CLASS_IPINFO_REGION_PREFIX_ASN:
+            case CORSARO_METRIC_CLASS_IPINFO_COUNTRY_PREFIX_ASN:
+                libts_keys = &(m->metrickp_keys_geoasn);
+                break;
+            default:
+                libts_keys = &(m->metrickp_keys);
+        }
+
+        JLG(pval, *libts_keys, r->metricid);
         if (pval == NULL) {
             /* This is a metric ID that we haven't seen before so we need
              * to create a new 'key' in libtimeseries for it.
@@ -606,12 +630,17 @@ static int report_write_libtimeseries(corsaro_plugin_t *p,
 
             /* Do the JLI here, as we only want to add the first of the
              * four keys to our metrickp_keys array */
-            JLI(pval, m->metrickp_keys, r->metricid);
+            JLI(pval, *libts_keys, r->metricid);
             *pval = (Word_t)keyid;
 
             ADD_TIMESERIES_KEY("uniq_dst_ip");
-            if ((r->metricid >> 32) != CORSARO_METRIC_CLASS_PREFIX_ASN) {
-                ADD_TIMESERIES_KEY("uniq_src_asn");
+            switch(r->metricclass) {
+                case CORSARO_METRIC_CLASS_PREFIX_ASN:
+                case CORSARO_METRIC_CLASS_IPINFO_REGION_PREFIX_ASN:
+                case CORSARO_METRIC_CLASS_IPINFO_COUNTRY_PREFIX_ASN:
+                    break;
+                default:
+                    ADD_TIMESERIES_KEY("uniq_src_asn");
             }
             ADD_TIMESERIES_KEY("pkt_cnt");
             ADD_TIMESERIES_KEY("ip_len");
@@ -626,15 +655,19 @@ static int report_write_libtimeseries(corsaro_plugin_t *p,
          */
         timeseries_kp_set(m->kp, *pval, r->uniq_src_ips);
         timeseries_kp_set(m->kp, (*pval) + 1, r->uniq_dst_ips);
-        if ((r->metricid >> 32) != CORSARO_METRIC_CLASS_PREFIX_ASN) {
-            timeseries_kp_set(m->kp, (*pval) + 2, r->uniq_src_asn_count);
-            timeseries_kp_set(m->kp, (*pval) + 3, r->pkt_cnt);
-            timeseries_kp_set(m->kp, (*pval) + 4, r->bytes);
-        } else {
-            timeseries_kp_set(m->kp, (*pval) + 2, r->pkt_cnt);
-            timeseries_kp_set(m->kp, (*pval) + 3, r->bytes);
+        switch(r->metricclass) {
+                case CORSARO_METRIC_CLASS_PREFIX_ASN:
+                case CORSARO_METRIC_CLASS_IPINFO_REGION_PREFIX_ASN:
+                case CORSARO_METRIC_CLASS_IPINFO_COUNTRY_PREFIX_ASN:
+                    timeseries_kp_set(m->kp, (*pval) + 2, r->pkt_cnt);
+                    timeseries_kp_set(m->kp, (*pval) + 3, r->bytes);
+                    break;
+                default:
+                    timeseries_kp_set(m->kp, (*pval) + 2,
+                            r->uniq_src_asn_count);
+                    timeseries_kp_set(m->kp, (*pval) + 3, r->pkt_cnt);
+                    timeseries_kp_set(m->kp, (*pval) + 4, r->bytes);
         }
-
 
         J1FA(judyret, r->uniq_src_asns);
         J1FA(judyret, r->uniq_src_ipset);
@@ -644,7 +677,6 @@ static int report_write_libtimeseries(corsaro_plugin_t *p,
     }
 
     /* Flush all of our results for this interval to the backends */
-    timeseries_kp_flush(m->kp, timestamp);
     JLFA(judyret, *results);
     return 0;
 }
@@ -716,13 +748,15 @@ static void clean_result_map(Pvoid_t *resultmap) {
  *                          belong to.
  *  @return a pointer to a freshly created report plugin result.
  */
-static inline corsaro_report_result_t *new_result(uint64_t metricid,
+static inline corsaro_report_result_t *new_result(
+        corsaro_report_metric_class_t metricclass, uint64_t metricid,
         char *outlabel, uint32_t ts) {
 
     corsaro_report_result_t *r;
 
     r = (corsaro_report_result_t *)calloc(1, sizeof(corsaro_report_result_t));
     r->metricid = metricid;
+    r->metricclass = metricclass;
     r->pkt_cnt = 0;
     r->bytes = 0;
     r->uniq_src_ips = 0;
@@ -830,6 +864,7 @@ static int initialise_results(corsaro_plugin_t *p, Pvoid_t *results,
 
 static void update_merged_metric(Pvoid_t *results,
         corsaro_metric_ip_hash_t *iphash, corsaro_report_config_t *conf,
+        corsaro_report_metric_class_t metricclass,
         uint64_t metricid, uint32_t ts, uint32_t *subtrees_seen,
         int freereq) {
 
@@ -838,12 +873,12 @@ static void update_merged_metric(Pvoid_t *results,
     Word_t index = 0, ret;
     int x;
 
-    *subtrees_seen = (*subtrees_seen) | (1 << (metricid >> 32));
+    *subtrees_seen = (*subtrees_seen) | (1 << metricclass);
 
     JLG(pval, *results, metricid);
     if (pval == NULL) {
         /* This is a new metric, add it to our result hash map */
-        r = new_result(metricid, conf->outlabel, ts);
+        r = new_result(metricclass, metricid, conf->outlabel, ts);
         JLI(pval, *results, metricid);
         *pval = (Word_t)r;
     } else {
@@ -897,6 +932,33 @@ static void update_merged_metric(Pvoid_t *results,
     }
 }
 
+static void update_tracker_geoasn_results(Pvoid_t *results,
+        corsaro_report_iptracker_t *tracker, uint32_t ts,
+        corsaro_report_config_t *conf,  uint32_t *subtrees_seen,
+        corsaro_logger_t *logger) {
+
+    corsaro_metric_ip_hash_t *iter;
+    PWord_t pval;
+    Word_t index = 0, ret;
+    uint64_t metid;
+
+
+    JLF(pval, tracker->prev_maps->geoasns, index);
+    while (pval) {
+        iter = (corsaro_metric_ip_hash_t *)(*pval);
+
+        update_merged_metric(results, iter, conf,
+                    iter->metricclass, iter->metricid,
+                    ts, subtrees_seen, 0);
+
+        free(iter);
+
+        JLN(pval, tracker->prev_maps->geoasns, index);
+    }
+
+    JLFA(ret, tracker->prev_maps->geoasns);
+}
+
 /** Update the merged result set for an interval with a set of completed
  *  tallies from an IP tracker thread.
  *
@@ -926,18 +988,15 @@ static void update_tracker_results(Pvoid_t *results,
     assert(tracker->prev_maps != NULL);
     if (IS_METRIC_ALLOWED(tracker->allowedmetricclasses,
             CORSARO_METRIC_CLASS_COMBINED)) {
-        metid = CORSARO_METRIC_CLASS_COMBINED;
-        metid = (metid << 32);
         update_merged_metric(results, &(tracker->prev_maps->combined), conf,
-                metid, ts, subtrees_seen, 1);
+                CORSARO_METRIC_CLASS_COMBINED, 0, ts, subtrees_seen, 1);
     }
 
     if (tracker->prev_maps->ipprotocols) {
-        metid = CORSARO_METRIC_CLASS_IP_PROTOCOL;
-        metid = (metid << 32);
         for (i = 0; i < 256; i++) {
             update_merged_metric(results, &(tracker->prev_maps->ipprotocols[i]),
-                    conf, (metid | i), ts, subtrees_seen, 1);
+                    conf, CORSARO_METRIC_CLASS_IP_PROTOCOL, i, ts,
+                    subtrees_seen, 1);
         }
         free(tracker->prev_maps->ipprotocols);
     }
@@ -948,7 +1007,8 @@ static void update_tracker_results(Pvoid_t *results,
         for (i = CORSARO_FILTERID_ABNORMAL_PROTOCOL; i < CORSARO_FILTERID_MAX;
                 i++) {
             update_merged_metric(results,
-                    &(tracker->prev_maps->filters[i]), conf, (metid | i), ts,
+                    &(tracker->prev_maps->filters[i]), conf,
+                    CORSARO_METRIC_CLASS_FILTER_CRITERIA, i, ts,
                     subtrees_seen, 1);
         }
         free(tracker->prev_maps->filters);
@@ -965,19 +1025,19 @@ static void update_tracker_results(Pvoid_t *results,
             }
 
             update_merged_metric(results, iter, conf,
-                    iter->associated_metricids[i], ts, subtrees_seen, 0);
+                    iter->associated_metricids[i] >> 32,
+                    (iter->associated_metricids[i] & 0xFFFFFFFF),
+                    ts, subtrees_seen, 0);
         }
 
-        update_merged_metric(results, iter, conf, iter->metricid, ts,
-                subtrees_seen, 1);
+        update_merged_metric(results, iter, conf, iter->metricclass,
+                iter->metricid & 0xFFFFFFFF, ts, subtrees_seen, 1);
         free(iter);
 
         JLN(pval, tracker->prev_maps->general, index);
     }
 
     JLFA(ret, tracker->prev_maps->general);
-    free(tracker->prev_maps);
-    tracker->prev_maps = NULL;
 }
 
 
@@ -1057,6 +1117,7 @@ void *corsaro_report_init_merging(corsaro_plugin_t *p, int sources) {
     }
 
     m->metrickp_keys = (Pvoid_t) NULL;
+    m->metrickp_keys_geoasn = (Pvoid_t) NULL;
     m->country_labels = (Pvoid_t) NULL;
     m->region_labels = (Pvoid_t) NULL;
     m->polygon_labels = (Pvoid_t) NULL;
@@ -1093,6 +1154,7 @@ int corsaro_report_halt_merging(corsaro_plugin_t *p, void *local) {
     }
 
     JLFA(judyret, m->metrickp_keys);
+    JLFA(judyret, m->metrickp_keys_geoasn);
     corsaro_free_ipmeta_label_map(m->country_labels, 1);
     corsaro_free_ipmeta_label_map(m->region_labels, 1);
     corsaro_free_ipmeta_label_map(m->polygon_labels, 1);
@@ -1286,6 +1348,7 @@ int corsaro_report_merge_interval_results(corsaro_plugin_t *p, void *local,
     corsaro_report_merge_state_t *m;
     int i, reloadsock = 0;
     Pvoid_t results = NULL;
+    Pvoid_t geoasn_results = NULL;
     uint8_t *trackers_done;
     uint8_t totaldone = 0, skipresult = 0;
     int mergeret;
@@ -1348,6 +1411,11 @@ int corsaro_report_merge_interval_results(corsaro_plugin_t *p, void *local,
                         fin->timestamp) {
                     update_tracker_results(&results, &(procconf->iptrackers[i]),
                             fin->timestamp, conf, &subtrees_seen, p->logger);
+                    update_tracker_geoasn_results(&geoasn_results,
+                            &(procconf->iptrackers[i]), fin->timestamp, conf,
+                            &subtrees_seen, p->logger);
+                    free(procconf->iptrackers[i].prev_maps);
+                    procconf->iptrackers[i].prev_maps = NULL;
                     trackers_done[i] = 1;
                     totaldone ++;
                 } else if (procconf->iptrackers[i].haltphase == 2) {
@@ -1388,6 +1456,10 @@ int corsaro_report_merge_interval_results(corsaro_plugin_t *p, void *local,
                     subtrees_seen) < 0) {
                 return CORSARO_MERGE_WRITE_FAILED;
             }
+            if (report_write_avro_output(p, m, fin->timestamp,
+                    &geoasn_results, subtrees_seen) < 0) {
+                return CORSARO_MERGE_WRITE_FAILED;
+            }
         }
 
         if (conf->outformat == CORSARO_OUTPUT_LIBTIMESERIES) {
@@ -1395,6 +1467,11 @@ int corsaro_report_merge_interval_results(corsaro_plugin_t *p, void *local,
                     subtrees_seen) < 0) {
                 return CORSARO_MERGE_WRITE_FAILED;
             }
+            if (report_write_libtimeseries(p, m, fin->timestamp,
+                    &geoasn_results, subtrees_seen) < 0) {
+                return CORSARO_MERGE_WRITE_FAILED;
+            }
+            timeseries_kp_flush(m->kp, fin->timestamp);
         }
         mergeret = CORSARO_MERGE_SUCCESS;
     }

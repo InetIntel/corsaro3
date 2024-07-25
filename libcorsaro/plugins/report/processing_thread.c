@@ -252,6 +252,16 @@ static char *metclasstostr(corsaro_report_metric_class_t class) {
             return "Netacq polygon";
         case CORSARO_METRIC_CLASS_PREFIX_ASN:
             return "pfx2as ASN";
+        case CORSARO_METRIC_CLASS_IPINFO_CONTINENT:
+            return "IPInfo continent";
+        case CORSARO_METRIC_CLASS_IPINFO_COUNTRY:
+            return "IPInfo country";
+        case CORSARO_METRIC_CLASS_IPINFO_REGION:
+            return "IPInfo region";
+        case CORSARO_METRIC_CLASS_IPINFO_COUNTRY_PREFIX_ASN:
+            return "IPInfo country + pfx2as ASN";
+        case CORSARO_METRIC_CLASS_IPINFO_REGION_PREFIX_ASN:
+            return "IPInfo region + pfx2as ASN";
         case CORSARO_METRIC_CLASS_FILTER_CRITERIA:
             return "corsaro filter";
     }
@@ -271,7 +281,7 @@ static char *metclasstostr(corsaro_report_metric_class_t class) {
  *  @param logger       A reference to a corsaro logger for error reporting
  */
 static inline int process_single_tag(corsaro_report_metric_class_t class,
-        uint32_t tagval, uint32_t maxtagval,
+        uint64_t tagval, uint64_t maxtagval,
         corsaro_report_tracker_state_t *track,
         corsaro_logger_t *logger, uint16_t pktbytes) {
 
@@ -295,9 +305,15 @@ static inline int process_single_tag(corsaro_report_metric_class_t class,
 		}
 	}
 
-    metricid = GEN_METRICID(class, tagval);
+    if (class == CORSARO_METRIC_CLASS_IPINFO_COUNTRY_PREFIX_ASN ||
+            class == CORSARO_METRIC_CLASS_IPINFO_REGION_PREFIX_ASN) {
+        metricid = tagval;
+    } else {
+        metricid = GEN_METRICID(class, tagval);
+    }
     tag = (corsaro_report_msg_tag_t *)track->nextwrite;
     tag->tagid = metricid;
+    tag->tagclass = class;
     tag->bytes = pktbytes;
     tag->packets = 1;
 
@@ -583,6 +599,7 @@ static int process_tags(corsaro_report_tracker_state_t *track,
     int i, ret;
     uint16_t newtags = 0;
     uint16_t swapport = 0;
+    uint64_t geoasn_tag;
 
     /* "Combined" is simply a total across all metrics, i.e. the total
      * number of packets, source IPs etc. Every IP packet should add to
@@ -736,6 +753,32 @@ static int process_tags(corsaro_report_tracker_state_t *track,
                 CORSARO_METRIC_CLASS_PREFIX_ASN)) {
             PROCESS_SINGLE_TAG(CORSARO_METRIC_CLASS_PREFIX_ASN,
                     ntohl(tags->prefixasn), 0, 0);
+        }
+
+        if (ipinfo_tagged(tags)) {
+            if (IS_METRIC_ALLOWED(allowedmetricclasses,
+                        CORSARO_METRIC_CLASS_IPINFO_COUNTRY_PREFIX_ASN)) {
+                /* top 32 bits = asn */
+                /* next 16 bits is reserved for country codes */
+                /* bottom 16 bits is reserved for region IDs */
+                /* This means that any 64 bit key for a geo_asn tag is
+                 * unique, regardless of whether it is for a country+asn
+                 * or a region+asn (provided we have less than 64K regions!)
+                 */
+                geoasn_tag = (((uint64_t)ntohl(tags->prefixasn)) << 32) +
+                        (tags->ipinfo_country << 16);
+                PROCESS_SINGLE_TAG(
+                        CORSARO_METRIC_CLASS_IPINFO_COUNTRY_PREFIX_ASN,
+                        geoasn_tag, 0, 0);
+            }
+            if (IS_METRIC_ALLOWED(allowedmetricclasses,
+                        CORSARO_METRIC_CLASS_IPINFO_REGION_PREFIX_ASN)) {
+                geoasn_tag = (((uint64_t)ntohl(tags->prefixasn)) << 32) +
+                        ntohs(tags->ipinfo_region);
+                PROCESS_SINGLE_TAG(
+                        CORSARO_METRIC_CLASS_IPINFO_REGION_PREFIX_ASN,
+                        geoasn_tag, 0, 0);
+            }
         }
     }
 	return newtags;
