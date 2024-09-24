@@ -759,7 +759,7 @@ static int init_geoasn_couplets(corsaro_report_iptracker_t *track) {
     uint64_t alloced;
     uint64_t *couplets = NULL;
     uint64_t count;
-    char *tok;
+    char *tok, *p;
     uint64_t asn;
     uint64_t key;
     io_t *file;
@@ -817,6 +817,12 @@ static int init_geoasn_couplets(corsaro_report_iptracker_t *track) {
                 key += (asn << 32);
             } else {
                 /* it is a country (hopefully) */
+                if ((p = strchr(tok, '\n')) != NULL) {
+                    *p = '\0';
+                }
+                if (*tok == '\0') {
+                    break;
+                }
                 if (strlen(tok) != 2) {
                     corsaro_log(track->logger,
                             "report plugin: invalid country code in geoasn whitelist file: %s", tok);
