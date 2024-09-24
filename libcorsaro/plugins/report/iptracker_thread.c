@@ -765,6 +765,7 @@ static int init_geoasn_couplets(corsaro_report_iptracker_t *track) {
     io_t *file;
     char buffer[2048];
     int read, rc = 1;
+    char *saveptr = NULL;
 
     if (track->conf->geoasn_whitelist_file == NULL) {
         track->geoasn_couplets = NULL;
@@ -788,7 +789,7 @@ static int init_geoasn_couplets(corsaro_report_iptracker_t *track) {
             continue;
         }
 
-        tok = strtok(buffer, ",");
+        tok = strtok_r(buffer, ",", &saveptr);
         if (tok == NULL) {
             corsaro_log(track->logger,
                     "report plugin: malformed line in geoasn whitelist file: %s",
@@ -804,7 +805,7 @@ static int init_geoasn_couplets(corsaro_report_iptracker_t *track) {
             goto err;
         }
 
-        while ((tok = strtok(NULL, ",")) != NULL) {
+        while ((tok = strtok_r(NULL, ",", &saveptr)) != NULL) {
             if (tok[0] >= '0' && tok[0] <= '9') {
                 /* it is a region ID */
                 errno = 0;
@@ -841,7 +842,6 @@ static int init_geoasn_couplets(corsaro_report_iptracker_t *track) {
         }
     }
     wandio_destroy(file);
-    assert(0);
 
     track->geoasn_couplets = couplets;
     track->geoasn_couplet_count = count;
