@@ -1,11 +1,11 @@
-FROM ubuntu:bionic AS builder
+FROM ubuntu:focal AS builder
 
 ENV DEBIAN_FRONTEND=noninteractive
 
 WORKDIR /flowtuple
 
 RUN apt-get -y update && apt-get -y install apt-transport-https \
-               curl lsb-release gnupg sudo
+               curl lsb-release gnupg sudo wget ssl-cert ca-certificates
 
 RUN curl -1sLf 'https://dl.cloudsmith.io/public/wand/libwandio/cfg/setup/bash.deb.sh' | bash
 RUN curl -1sLf 'https://dl.cloudsmith.io/public/wand/libwandder/cfg/setup/bash.deb.sh' | bash
@@ -16,6 +16,11 @@ RUN curl -1sLf 'https://dl.cloudsmith.io/public/wand/libflowmanager/cfg/setup/ba
 RUN echo "deb https://pkg.caida.org/os/ubuntu $(lsb_release -sc) main" | tee /etc/apt/sources.list.d/caida.list
 
 RUN curl -so /etc/apt/trusted.gpg.d/caida.gpg https://pkg.caida.org/os/ubuntu/keyring.gpg
+
+RUN wget -O - https://inetintel.cc.gatech.edu/packages/inetintel-packages.gpg.key | gpg --dearmor | tee /usr/share/keyrings/inetintel-keyring.gpg > /dev/null
+
+RUN echo "deb [signed-by=/usr/share/keyrings/inetintel-keyring.gpg] https://inetintel.cc.gatech.edu/packages/$(lsb_release -sc)/ $(lsb_release -sc) main" |  tee -a /etc/apt/sources.list.d/inetintel.list
+
 
 RUN apt-get -y update && apt-get -y install \
         autoconf \
@@ -68,14 +73,14 @@ RUN cd corsaro3 && autoreconf -vfi && ./configure && make && make install && ldc
 RUN tar -cvf /flowtuple/libcorsaro.tar /usr/local/lib/libcorsaro*
 RUN tar -cvf /flowtuple/libavro.tar /usr/local/lib/libavro*
 
-FROM ubuntu:bionic
+FROM ubuntu:focal
 
 ENV DEBIAN_FRONTEND=noninteractive
 
 WORKDIR /flowtuple
 
 RUN apt-get -y update && apt-get -y install apt-transport-https \
-               curl lsb-release gnupg sudo
+               curl lsb-release gnupg sudo wget ssl-cert ca-certificates
 
 RUN curl -1sLf 'https://dl.cloudsmith.io/public/wand/libwandio/cfg/setup/bash.deb.sh' | bash
 RUN curl -1sLf 'https://dl.cloudsmith.io/public/wand/libwandder/cfg/setup/bash.deb.sh' | bash
@@ -85,6 +90,10 @@ RUN curl -1sLf 'https://dl.cloudsmith.io/public/wand/libflowmanager/cfg/setup/ba
 RUN echo "deb https://pkg.caida.org/os/ubuntu $(lsb_release -sc) main" | tee /etc/apt/sources.list.d/caida.list
 
 RUN curl -so /etc/apt/trusted.gpg.d/caida.gpg https://pkg.caida.org/os/ubuntu/keyring.gpg
+
+RUN wget -O - https://inetintel.cc.gatech.edu/packages/inetintel-packages.gpg.key | gpg --dearmor | tee /usr/share/keyrings/inetintel-keyring.gpg > /dev/null
+
+RUN echo "deb [signed-by=/usr/share/keyrings/inetintel-keyring.gpg] https://inetintel.cc.gatech.edu/packages/$(lsb_release -sc)/ $(lsb_release -sc) main" |  tee -a /etc/apt/sources.list.d/inetintel.list
 
 RUN apt-get -y update && apt-get -y install \
         libgoogle-perftools4 \
