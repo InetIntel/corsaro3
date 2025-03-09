@@ -76,8 +76,8 @@ static const char FLOWTUPLE_RESULT_SCHEMA[] =
       {\"name\": \"is_masscan\", \"type\": \"int\"}, \
       {\"name\": \"maxmind_continent\", \"type\": \"string\"}, \
       {\"name\": \"maxmind_country\", \"type\": \"string\"}, \
-      {\"name\": \"netacq_continent\", \"type\": \"string\"}, \
-      {\"name\": \"netacq_country\", \"type\": \"string\"}, \
+      {\"name\": \"ipinfo_continent\", \"type\": \"string\"}, \
+      {\"name\": \"ipinfo_country\", \"type\": \"string\"}, \
       {\"name\": \"prefix2asn\", \"type\": \"long\"} \
       ]}";
 
@@ -147,10 +147,10 @@ struct corsaro_flowtuple_data {
   uint16_t maxmind_country;
   /** Continent that the source IP corresponds to, according to maxmind */
   uint16_t maxmind_continent;
-  /** Country that the source IP corresponds to, according to netacq-edge */
-  uint16_t netacq_country;
-  /** Continent that the source IP corresponds to, according to netacq-edge */
-  uint16_t netacq_continent;
+  /** Country that the source IP corresponds to, according to IPInfo */
+  uint16_t ipinfo_country;
+  /** Continent that the source IP corresponds to, according to IPInfo */
+  uint16_t ipinfo_continent;
   /** ASN that the source IP corresponds to, according to pf2asn data */
   uint32_t prefixasn;
   /** Bitmap indicating which libipmeta tags are valid for this flow */

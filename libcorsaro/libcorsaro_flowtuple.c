@@ -168,9 +168,9 @@ void encode_flowtuple_as_avro(struct corsaro_flowtuple_data *ft,
     }
 
 
-    if (ft->tagproviders & (1 << IPMETA_PROVIDER_NETACQ_EDGE)) {
-        valspace[0] = (char)(ft->netacq_continent & 0xff);
-        valspace[1] = (char)((ft->netacq_continent >> 8) & 0xff);
+    if (ft->tagproviders & (1 << IPMETA_PROVIDER_IPINFO)) {
+        valspace[0] = (char)(ft->ipinfo_continent & 0xff);
+        valspace[1] = (char)((ft->ipinfo_continent >> 8) & 0xff);
         valspace[2] = '\0';
 
         if (corsaro_encode_avro_field(writer, CORSARO_AVRO_STRING,
@@ -178,8 +178,8 @@ void encode_flowtuple_as_avro(struct corsaro_flowtuple_data *ft,
             return;
         }
 
-        valspace[0] = (char)(ft->netacq_country & 0xff);
-        valspace[1] = (char)((ft->netacq_country >> 8) & 0xff);
+        valspace[0] = (char)(ft->ipinfo_country & 0xff);
+        valspace[1] = (char)((ft->ipinfo_country >> 8) & 0xff);
         valspace[2] = '\0';
 
         if (corsaro_encode_avro_field(writer, CORSARO_AVRO_STRING,
@@ -302,12 +302,12 @@ int decode_flowtuple_from_avro(avro_value_t *record,
     avro_value_get_by_index(record, 16, &av, NULL);
     avro_value_get_string(&av, &str, &strsize);
     assert(strsize == 2);
-    ft->netacq_continent = (uint16_t)(str[0]) + (((uint16_t)str[1]) << 8);
+    ft->ipinfo_continent = (uint16_t)(str[0]) + (((uint16_t)str[1]) << 8);
 
     avro_value_get_by_index(record, 17, &av, NULL);
     avro_value_get_string(&av, &str, &strsize);
     assert(strsize == 2);
-    ft->netacq_country = (uint16_t)(str[0]) + (((uint16_t)str[1]) << 8);
+    ft->ipinfo_country = (uint16_t)(str[0]) + (((uint16_t)str[1]) << 8);
 
 
     avro_value_get_by_index(record, 18, &av, NULL);

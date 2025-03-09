@@ -749,9 +749,9 @@ int corsaro_flowtuple_process_packet(corsaro_plugin_t *p, void *local,
             t.ftdata.maxmind_country = tags->maxmind_country;
         }
 
-        if (t.ftdata.tagproviders & (1 << IPMETA_PROVIDER_NETACQ_EDGE)) {
-            t.ftdata.netacq_continent = tags->netacq_continent;
-            t.ftdata.netacq_country = tags->netacq_country;
+        if (t.ftdata.tagproviders & (1 << IPMETA_PROVIDER_IPINFO)) {
+            t.ftdata.ipinfo_continent = tags->ipinfo_continent;
+            t.ftdata.ipinfo_country = tags->ipinfo_country;
         }
 
         if (t.ftdata.tagproviders & (1 << IPMETA_PROVIDER_PFX2AS)) {
@@ -832,10 +832,10 @@ static void kafka_publish_flowtuple(corsaro_flowtuple_merger_t *m,
     rec.maxmind_country[1] = (char) (ft->ftdata.maxmind_country >> 8) & 0xff;
     rec.maxmind_continent[0] = (char) ft->ftdata.maxmind_continent & 0xff;
     rec.maxmind_continent[1] = (char) (ft->ftdata.maxmind_continent >> 8) & 0xff;
-    rec.netacq_country[0] = (char) ft->ftdata.netacq_country & 0xff;
-    rec.netacq_country[1] = (char) (ft->ftdata.netacq_country >> 8) & 0xff;
-    rec.netacq_continent[0] = (char) ft->ftdata.netacq_continent & 0xff;
-    rec.netacq_continent[1] = (char) (ft->ftdata.netacq_continent >> 8) & 0xff;
+    rec.ipinfo_country[0] = (char) ft->ftdata.ipinfo_country & 0xff;
+    rec.ipinfo_country[1] = (char) (ft->ftdata.ipinfo_country >> 8) & 0xff;
+    rec.ipinfo_continent[0] = (char) ft->ftdata.ipinfo_continent & 0xff;
+    rec.ipinfo_continent[1] = (char) (ft->ftdata.ipinfo_continent >> 8) & 0xff;
 
     memcpy(m->writeptr, &rec, sizeof(rec));
     m->writeptr += sizeof(rec);

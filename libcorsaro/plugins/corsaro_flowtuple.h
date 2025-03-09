@@ -105,10 +105,10 @@ typedef struct corsaro_flowtuple_kafka_record {
   char maxmind_country[2];
   /** Continent that the source IP corresponds to, according to maxmind */
   char maxmind_continent[2];
-  /** Country that the source IP corresponds to, according to netacq-edge */
-  char netacq_country[2];
-  /** Continent that the source IP corresponds to, according to netacq-edge */
-  char netacq_continent[2];
+  /** Country that the source IP corresponds to, according to IPInfo */
+  char ipinfo_country[2];
+  /** Continent that the source IP corresponds to, according to IPInfo */
+  char ipinfo_continent[2];
   /** ASN that the source IP corresponds to, according to pf2asn data */
   uint32_t prefixasn;
 
