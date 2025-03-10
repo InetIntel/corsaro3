@@ -315,7 +315,7 @@ int decode_flowtuple_from_avro(avro_value_t *record,
     ft->prefixasn = (uint32_t)tmp64;
 
     ft->tagproviders = (1 << IPMETA_PROVIDER_MAXMIND) |
-            (1 << IPMETA_PROVIDER_NETACQ_EDGE) |
+            (1 << IPMETA_PROVIDER_IPINFO) |
             (1 << IPMETA_PROVIDER_PFX2AS);
 
     ft->hash_val = 0;
