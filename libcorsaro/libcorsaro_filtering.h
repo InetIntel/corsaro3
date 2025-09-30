@@ -200,6 +200,10 @@ typedef enum {
      *  packet (so is more likely to be spoofed?) */
     CORSARO_FILTERID_TTL_200_NONSPOOFED,
 
+    /** Matches if the source IP belongs to one of the known subnets that
+     *  Palo Alto uses for periodic large scale scanning
+     */
+    CORSARO_FILTERID_PALOALTO_SUBNET,
     /* XXX PLEASE ADD ALL FUTURE FILTERS HERE */
 
     /** Special reserved ID for the "last" filter -- this should always

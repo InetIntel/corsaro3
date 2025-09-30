@@ -184,6 +184,19 @@ static inline int _apply_last_src_byte255_filter(corsaro_logger_t *logger,
     return 0;
 }
 
+static inline int _apply_paloalto_subnet_filter(corsaro_logger_t *logger,
+        libtrace_ip_t *ip) {
+    if (!ip) {
+        return -1;
+    }
+
+    /* 147.185.133.0/24 */
+    if ((ntohl(ip->ip_src.s_addr) & 0xFFFFFF00) == 0x93B98500) {
+        return 1;
+    }
+    return 0;
+}
+
 static inline int _apply_same_src_dest_filter(corsaro_logger_t *logger,
         libtrace_ip_t *ip) {
 
@@ -959,6 +972,10 @@ static int _apply_erratic_filter(corsaro_logger_t *logger,
         return 1;
     }
 
+    if (_apply_paloalto_subnet_filter(logger, fparams->ip) > 0) {
+        return 1;
+    }
+
     return 0;
 }
 
@@ -1185,6 +1202,12 @@ int corsaro_apply_netbios_name_filter(corsaro_logger_t *logger,
     return _apply_netbios_name_filter(logger, &fparams);
 }
 
+int corsaro_apply_paloalto_subnet_filter(corsaro_logger_t *logger,
+        libtrace_packet_t *packet) {
+
+    PREPROCESS_PACKET
+    return _apply_paloalto_subnet_filter(logger, fparams.ip);
+}
 
 const char *corsaro_get_builtin_filter_name(corsaro_logger_t *logger,
         corsaro_builtin_filter_id_t filtid) {
@@ -1252,6 +1275,8 @@ const char *corsaro_get_builtin_filter_name(corsaro_logger_t *logger,
             return "dns-resp-non-standard";
         case CORSARO_FILTERID_NETBIOS_QUERY_NAME:
             return "netbios-query-name";
+        case CORSARO_FILTERID_PALOALTO_SUBNET:
+            return "paloalto-subnet";
         default:
             corsaro_log(logger, "Warning: no filter name for id %d -- please add one to corsaro_get_builtin_filter_name()", filtid);
             snprintf(unknown, 2048, "unknown-%d", filtid);
@@ -1405,6 +1430,8 @@ int corsaro_apply_all_filters(corsaro_logger_t *logger, libtrace_ip_t *ip,
             _apply_dns_resp_oddport_filter(logger, &fparams);
     torun[CORSARO_FILTERID_NETBIOS_QUERY_NAME].result =
             _apply_netbios_name_filter(logger, &fparams);
+    torun[CORSARO_FILTERID_PALOALTO_SUBNET].result =
+            _apply_paloalto_subnet_filter(logger, fparams.ip);
 
     if (torun[CORSARO_FILTERID_ERRATIC].result != 1 && (
             torun[CORSARO_FILTERID_BACKSCATTER].result == 1 ||
@@ -1420,7 +1447,8 @@ int corsaro_apply_all_filters(corsaro_logger_t *logger, libtrace_ip_t *ip,
             torun[CORSARO_FILTERID_ASN_208843_SCAN].result == 1 ||
             torun[CORSARO_FILTERID_TTL_200].result == 1 ||
             torun[CORSARO_FILTERID_DNS_RESP_NONSTANDARD].result == 1 ||
-            torun[CORSARO_FILTERID_NETBIOS_QUERY_NAME].result == 1)) {
+            torun[CORSARO_FILTERID_NETBIOS_QUERY_NAME].result == 1 ||
+            torun[CORSARO_FILTERID_PALOALTO_SUBNET].result == 1)) {
 
         torun[CORSARO_FILTERID_ERRATIC].result = 1;
     }
@@ -1543,6 +1571,9 @@ int corsaro_apply_multiple_filters(corsaro_logger_t *logger,
             case CORSARO_FILTERID_NETBIOS_QUERY_NAME:
                 torun[i].result =_apply_netbios_name_filter(logger, &fparams);
                 break;
+            case CORSARO_FILTERID_PALOALTO_SUBNET:
+                torun[i].result = _apply_paloalto_subnet_filter(logger, fparams.ip);
+                break;
             case CORSARO_FILTERID_NOTIP:
                 torun[i].result = _apply_notip_filter(logger, fparams.ip);
                 break;
@@ -1620,6 +1651,8 @@ int corsaro_apply_filter_by_id(corsaro_logger_t *logger,
             return _apply_dns_resp_oddport_filter(logger, &fparams);
         case CORSARO_FILTERID_NETBIOS_QUERY_NAME:
             return _apply_netbios_name_filter(logger, &fparams);
+        case CORSARO_FILTERID_PALOALTO_SUBNET:
+            return _apply_paloalto_subnet_filter(logger, fparams.ip);
         default:
             corsaro_log(logger, "Warning: no filter callback for id %d -- please add one to corsaro_apply_filter_by_id()", filtid);
     }
