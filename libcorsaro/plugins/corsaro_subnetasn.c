@@ -330,16 +330,23 @@ int corsaro_subnetasn_process_packet(corsaro_plugin_t *p, void *local,
     // But we only do this ONCE per subnet per interval (if using khash).
 
     subnet_asn_entry_t *entry = calloc(1, sizeof(subnet_asn_entry_t));
+    if (!entry) {
+      ipmeta_record_set_free(&records);
+      return -1;
+    }
 
-    // Iterate records
     ipmeta_record_t *rec;
     uint64_t num_ips;
     ipmeta_record_set_rewind(records);
     while ((rec = ipmeta_record_set_next(records, &num_ips))) {
       if (rec->asn_cnt > 0) {
         // Append ASNs to entry
-        entry->asns = realloc(entry->asns, (entry->asn_cnt + rec->asn_cnt) *
-                                             sizeof(uint32_t));
+        uint32_t *new_asns = realloc(
+          entry->asns, (entry->asn_cnt + rec->asn_cnt) * sizeof(uint32_t));
+        if (!new_asns) {
+          continue;
+        }
+        entry->asns = new_asns;
         memcpy(entry->asns + entry->asn_cnt, rec->asn,
                rec->asn_cnt * sizeof(uint32_t));
         entry->asn_cnt += rec->asn_cnt;
@@ -356,6 +363,10 @@ int corsaro_subnetasn_process_packet(corsaro_plugin_t *p, void *local,
 
     // Insert into hash
     k = kh_put(subnet, state->subnet_hash, subnet_ip, &ret);
+    if (ret < 0) {
+      subnet_asn_entry_free(entry);
+      return -1;
+    }
     kh_value(state->subnet_hash, k) = entry;
   }
 
@@ -375,8 +386,9 @@ void *corsaro_subnetasn_init_merging(corsaro_plugin_t *p, int sources)
 {
   corsaro_subnetasn_merge_state_t *state =
     calloc(1, sizeof(corsaro_subnetasn_merge_state_t));
-  if (!state)
+  if (!state) {
     return NULL;
+  }
   state->subnet_hash = kh_init(subnet);
   return state;
 }
@@ -400,13 +412,18 @@ int compare_uint32(const void *a, const void *b)
 // Helper to merge ASNs into destination entry
 static void merge_asns(subnet_asn_entry_t *dst, subnet_asn_entry_t *src)
 {
-  if (!src || src->asn_cnt == 0)
+  if (!src || src->asn_cnt == 0) {
     return;
+  }
 
   // Naive merge: realloc, append, sort, uniq
   int old_cnt = dst->asn_cnt;
-  dst->asns =
+  uint32_t *new_asns =
     realloc(dst->asns, (dst->asn_cnt + src->asn_cnt) * sizeof(uint32_t));
+  if (!new_asns) {
+    return;
+  }
+  dst->asns = new_asns;
   memcpy(dst->asns + old_cnt, src->asns, src->asn_cnt * sizeof(uint32_t));
   dst->asn_cnt += src->asn_cnt;
 
@@ -450,19 +467,30 @@ int corsaro_subnetasn_merge_interval_results(corsaro_plugin_t *p, void *local,
   // Actually, threads are paused/stopped or at a sync point.
   // But we should copy data?
 
-  for (i = 0; tomerge[i] != NULL; i++) {
+  for (i = 0; i < fin->threads_ended; i++) {
     corsaro_subnetasn_state_t *tstate = (corsaro_subnetasn_state_t *)tomerge[i];
+    if (!tstate) {
+      continue;
+    }
     subnet_asn_entry_t *src_val;
     uint32_t subnet_key;
 
     kh_foreach(tstate->subnet_hash, subnet_key, src_val, {
       int ret;
       khiter_t k = kh_put(subnet, mstate->subnet_hash, subnet_key, &ret);
+      if (ret < 0) {
+        // Error inserting into hash, skip this entry
+        continue;
+      }
       if (ret != 0) { // New key
         subnet_asn_entry_t *new_entry = calloc(1, sizeof(subnet_asn_entry_t));
-        kh_value(mstate->subnet_hash, k) = new_entry;
-        // Copy ASNs
-        merge_asns(new_entry, src_val);
+        if (new_entry) {
+          kh_value(mstate->subnet_hash, k) = new_entry;
+          merge_asns(new_entry, src_val);
+        } else {
+          // Failed to allocate new_entry, remove key from hash
+          kh_del(subnet, mstate->subnet_hash, k);
+        }
       } else { // Exists
         merge_asns(kh_value(mstate->subnet_hash, k), src_val);
       }
@@ -488,14 +516,14 @@ int corsaro_subnetasn_rotate_output(corsaro_plugin_t *p, void *local)
   corsaro_subnetasn_merge_state_t *mstate =
     (corsaro_subnetasn_merge_state_t *)local;
   corsaro_subnetasn_config_t *conf = (corsaro_subnetasn_config_t *)p->config;
-  char *fname;
   gzFile f;
   uint32_t subnet_key;
   subnet_asn_entry_t *entry;
   struct in_addr addr;
 
-  if (!mstate || kh_size(mstate->subnet_hash) == 0)
+  if (!mstate || kh_size(mstate->subnet_hash) == 0) {
     return 0;
+  }
 
   // We need the timestamp. Where to get it?
   // Usually stored in state or passed?

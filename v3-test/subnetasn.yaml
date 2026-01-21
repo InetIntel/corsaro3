@@ -1,0 +1,28 @@
+# Example configuration file for corsarotrace with the subnetasn plugin
+
+# Libtrace URI describing where to read packets from.
+packetsource: "pcap:/path/to/your/trace.pcap"
+
+# A unique identifier for this capture location.
+# This is used in the output filename: <monitorid>_<timestamp>_subnetasn.csv.gz
+monitorid: example-node
+
+# The interval length, in seconds. At the end of each interval, the /24 subnets
+# seen during that hour will be written to a compressed CSV file.
+# Hourly intervals (3600s) are recommended for this plugin.
+interval: 3600
+
+# List of analysis plugins to run and their plugin-specific config options.
+plugins:
+  - subnetasn:
+       # Directory where output files should be written.
+       # If not specified, they will be written to the current working directory.
+       output_dir: "/path/to/output/directory"
+
+       # The libipmeta provider to use for ASN lookups.
+       # Default is "pfx2as".
+       asn_provider: "pfx2as"
+
+       # Arguments for the ASN provider.
+       # For pfx2as, this is typically the path to the prefix-to-AS mapping file.
+       asn_provider_args: ""
