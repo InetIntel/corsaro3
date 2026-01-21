@@ -48,6 +48,7 @@
 #include <arpa/inet.h>
 #include <assert.h>
 #include <inttypes.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -80,6 +81,7 @@ typedef struct corsaro_subnetasn_config {
   corsaro_plugin_proc_options_t basic;
   char *asn_provider;
   char *asn_provider_args;
+  char *output_dir;
 } corsaro_subnetasn_config_t;
 
 typedef struct subnet_asn_entry {
@@ -160,6 +162,10 @@ int corsaro_subnetasn_parse_config(corsaro_plugin_t *p, yaml_document_t *doc,
       if (conf->asn_provider_args)
         free(conf->asn_provider_args);
       conf->asn_provider_args = strdup(val_str);
+    } else if (!strcmp(key_str, "output_dir")) {
+      if (conf->output_dir)
+        free(conf->output_dir);
+      conf->output_dir = strdup(val_str);
     }
   }
 
@@ -184,6 +190,8 @@ void corsaro_subnetasn_destroy_self(corsaro_plugin_t *p)
     free(conf->asn_provider);
     if (conf->asn_provider_args)
       free(conf->asn_provider_args);
+    if (conf->output_dir)
+      free(conf->output_dir);
     free(conf);
     p->config = NULL;
   }
@@ -524,11 +532,18 @@ int corsaro_subnetasn_rotate_output(corsaro_plugin_t *p, void *local)
   // Let's use a dummy name for now and I will fix it in a patch if needed.
   // Or usage of corsaro_generate_filename helper?
 
-  // Using asprintf/snprintf.
-  char filename[256];
-  snprintf(filename, sizeof(filename), "%s_%u_subnetasn.csv.gz",
-           conf->basic.monitorid ? conf->basic.monitorid : "unknown",
-           mstate->timestamp);
+  // fname construction
+  char filename[PATH_MAX];
+  if (conf->output_dir) {
+    snprintf(filename, sizeof(filename), "%s/%s_%u_subnetasn.csv.gz",
+             conf->output_dir,
+             conf->basic.monitorid ? conf->basic.monitorid : "unknown",
+             mstate->timestamp);
+  } else {
+    snprintf(filename, sizeof(filename), "%s_%u_subnetasn.csv.gz",
+             conf->basic.monitorid ? conf->basic.monitorid : "unknown",
+             mstate->timestamp);
+  }
 
   f = gzopen(filename, "wb");
   if (!f) {
