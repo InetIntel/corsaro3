@@ -60,35 +60,34 @@
 #define CORSARO_USE_VISIBILITY @HAVE_VISIBILITY@
 
 #if CORSARO_USE_PACKED
-#define PACKED __attribute__((packed))
+#  define PACKED __attribute__((packed))
 #else
-#define PACKED
+#  define PACKED
 #endif
 
 #if CORSARO_USE_UNUSED
-#define UNUSED __attribute__((unused))
+#  define UNUSED __attribute__((unused))
 #else
-#define UNUSED
+#  define UNUSED
 #endif
 
 #if CORSARO_USE_DEPRECATED
-#define DEPRECATED __attribute__((deprecated))
+#  define DEPRECATED __attribute__((deprecated))
 #else
-#define DEPRECATED
+#  define DEPRECATED
 #endif
 
 #if CORSARO_USE_PURE
-#define SIMPLE_FUNCTION __attribute__((pure))
+#  define SIMPLE_FUNCTION __attribute__((pure))
 #else
-#define SIMPLE_FUNCTION
+#  define SIMPLE_FUNCTION
 #endif
 
 #ifndef PRINTF
 #if CORSARO_USE_PRINTF
-#define PRINTF(formatpos, argpos)                                              \
-  __attribute__((format(printf, formatpos, argpos)))
+#  define PRINTF(formatpos, argpos) __attribute__((format(printf,formatpos, argpos)))
 #else
-#define PRINTF(formatpos, argpos)
+#  define PRINTF(formatpos, argpos)
 #endif
 #endif
 
@@ -107,38 +106,39 @@ typedef struct corsaro_interval corsaro_interval_t;
 #define CORSARO_IO_TRACE_FORMAT_PATTERN 'f'
 
 typedef enum {
-  CORSARO_MERGE_TYPE_OVERLAPPING,
-  CORSARO_MERGE_TYPE_DISTINCT
+    CORSARO_MERGE_TYPE_OVERLAPPING,
+    CORSARO_MERGE_TYPE_DISTINCT
 } corsaro_merge_style_t;
 
 typedef enum {
-  CORSARO_OUTPUT_AVRO,
-  CORSARO_OUTPUT_LIBTIMESERIES,
-  CORSARO_OUTPUT_KAFKA,
-  CORSARO_OUTPUT_TRACE
+    CORSARO_OUTPUT_AVRO,
+    CORSARO_OUTPUT_LIBTIMESERIES,
+    CORSARO_OUTPUT_KAFKA,
+    CORSARO_OUTPUT_TRACE
 } corsaro_output_format_t;
 
 typedef enum corsaro_result_type {
-  CORSARO_RESULT_TYPE_BLANK,
-  CORSARO_RESULT_TYPE_EOF,
-  CORSARO_RESULT_TYPE_DATA,
+    CORSARO_RESULT_TYPE_BLANK,
+    CORSARO_RESULT_TYPE_EOF,
+    CORSARO_RESULT_TYPE_DATA,
 } corsaro_result_type_t;
 
+
 struct corsaro_interval {
-  uint32_t corsaro_magic;
-  uint32_t magic;
-  uint32_t number;
-  uint32_t time;
-  uint8_t isstart;
+    uint32_t corsaro_magic;
+    uint32_t magic;
+    uint32_t number;
+    uint32_t time;
+    uint8_t isstart;
 };
 
 struct corsaro_fin_interval {
-  uint32_t interval_id;
-  uint32_t timestamp;
-  uint16_t threads_ended;
-  uint8_t rotate_after;
-  void ***thread_plugin_data;
-  corsaro_fin_interval_t *next;
+    uint32_t interval_id;
+    uint32_t timestamp;
+    uint16_t threads_ended;
+    uint8_t rotate_after;
+    void ***thread_plugin_data;
+    corsaro_fin_interval_t *next;
 };
 
 #endif
