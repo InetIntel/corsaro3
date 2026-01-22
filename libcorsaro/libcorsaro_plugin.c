@@ -71,13 +71,13 @@
 #include "corsaro_null.h"
 
 #define PLUGIN_INIT_ADD(plugin)                                                \
-{                                                                            \
+  {                                                                            \
     tail = add_plugin(logger, tail, plugin##_alloc(), 1);                      \
     if (all == NULL) {                                                         \
       all = tail;                                                              \
     }                                                                          \
     plugin_cnt++;                                                              \
-}
+  }
 
 static int corsaro_plugin_verify(corsaro_logger_t *logger,
                                  corsaro_plugin_t *plugin)
