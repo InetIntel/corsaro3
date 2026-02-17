@@ -248,6 +248,21 @@ int corsaro_reset_fast_trace_writer(corsaro_logger_t *logger,
 int corsaro_fast_write_erf_packet(corsaro_logger_t *logger,
         corsaro_fast_trace_writer_t *writer, libtrace_packet_t *packet);
 
+/** Converts a packet captured by DPDK into the pcap format and passes it off
+ *  to an asynchronous trace file writer to be written to disk.
+ *
+ *  @note Only call this function on a fast writer that has been prepared via
+ *        a call to corsaro_start_fast_trace_writer().
+ *
+ *  @param logger       A corsaro logger instance to use for logging errors.
+ *  @param writer       The fast writer to use for writing the packet to disk.
+ *  @param packet       The packet to be converted and written.
+ *
+ *  @return 1 if successful, -1 if an error occurred.
+ */
+int corsaro_fast_write_dpdk_packet(corsaro_logger_t *logger,
+        corsaro_fast_trace_writer_t *writer, libtrace_packet_t *packet);
+
 #endif
 
 // vim: set sw=4 tabstop=4 softtabstop=4 expandtab :

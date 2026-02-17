@@ -83,11 +83,13 @@
 #  define SIMPLE_FUNCTION
 #endif
 
+/*
 #if CORSARO_USE_PRINTF
 #  define PRINTF(formatpos, argpos) __attribute__((format(printf,formatpos, argpos)))
 #else
 #  define PRINTF(formatpos, argpos)
 #endif
+*/
 
 /** The framing length of ERF ethernet packets (ERF header len + 2
  * bytes of padding) */

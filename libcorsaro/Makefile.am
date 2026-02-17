@@ -37,6 +37,10 @@ libcorsaro_la_LIBADD = $(top_builddir)/common/libcccommon.la \
 	$(top_builddir)/libcorsaro/plugins/libcorsaroplugins.la
 libcorsaro_la_LDFLAGS = -version-info @CORSARO_LIBTOOL_CURRENT@:@CORSARO_LIBTOOL_REVISION@:@CORSARO_LIBTOOL_AGE@
 
+if WANT_DPDK
+    libcorsaro_la_CPPFLAGS = $(DPDK_CFLAGS) $(AM_CPPFLAGS)
+endif
+
 ACLOCAL_AMFLAGS = -I m4
 
 CLEANFILES = *~

@@ -159,6 +159,18 @@ AC_CHECK_HEADERS([arpa/inet.h inttypes.h limits.h math.h stdlib.h string.h \
 			      time.h sys/time.h])
 AC_CHECK_HEADERS(uthash.h, [uthash_h=true])
 
+have_dpdk=no
+PKG_CHECK_MODULES([DPDK], [libdpdk], [
+    have_dpdk=yes
+    AC_DEFINE([HAVE_DPDK], [1], [Define if DPDK is available])
+], [
+    have_dpdk=no
+    AC_DEFINE([HAVE_DPDK], [0], [Define if DPDK is not available])
+    AC_MSG_WARN([DPDK not found; building without DPDK support])
+])
+
+AM_CONDITIONAL([WANT_DPDK], [test "x$have_dpdk" = "xyes"])
+
 # monitor name
 AC_MSG_CHECKING([for the monitor name to use])
 AC_ARG_WITH([monitorname],

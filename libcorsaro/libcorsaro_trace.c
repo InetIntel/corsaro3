@@ -48,6 +48,7 @@
  */
 
 #define _GNU_SOURCE
+#include "config.h"
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
@@ -63,6 +64,10 @@
 #include "libcorsaro.h"
 #include "libcorsaro_log.h"
 #include "libcorsaro_trace.h"
+
+#ifdef HAVE_DPDK
+#include <rte_mbuf_core.h>
+#endif
 
 /** Use 24 MB as an initial buffer size for the fast writers */
 #define FAST_WRITER_BUFFER_SIZE (24 * 1024 * 1024)
@@ -455,29 +460,14 @@ int corsaro_write_packet(corsaro_logger_t *logger,
     return ret;
 }
 
-int corsaro_fast_write_erf_packet(corsaro_logger_t *logger,
-        corsaro_fast_trace_writer_t *writer, libtrace_packet_t *packet) {
+static int do_async_write(corsaro_logger_t *logger,
+        corsaro_fast_trace_writer_t *writer, uint8_t *payload,
+        uint64_t ts, uint16_t caplen, uint16_t wirelen) {
 
-    dag_record_t *erfptr;
     pcap_header_t *pcaphdr;
-    uint16_t pcapcaplen;
-    uint64_t erfts;
     char tmpbuf[200];
 
-    erfptr = (dag_record_t *)packet->header;
     pcaphdr = (pcap_header_t *)tmpbuf;
-
-#if __BYTE_ORDER == __BIG_ENDIAN
-    erfts = BYTESWAP64(erfptr->ts);
-#else
-    erfts = erfptr->ts;
-#endif
-
-    /* 18 = ERF header length + 2 bytes of padding */
-    /* XXX if we ever start using ERF extension headers, we will also need to
-     * account for those in this calculation.
-     */
-    pcapcaplen = ntohs(erfptr->rlen) - CORSARO_ERF_ETHERNET_FRAMING;
 
     /* Check if any outstanding writes have completed */
     if (writer->waiting) {
@@ -486,7 +476,7 @@ int corsaro_fast_write_erf_packet(corsaro_logger_t *logger,
         }
     }
 
-    while (SPACEREM(writer) < sizeof(pcap_header_t) + pcapcaplen) {
+    while (SPACEREM(writer) < sizeof(pcap_header_t) + caplen) {
         /* Buffer doesn't have enough space to fit the current packet,
          * extend it. Hopefully we don't do this often (if at all).
          */
@@ -509,20 +499,17 @@ int corsaro_fast_write_erf_packet(corsaro_logger_t *logger,
     pcaphdr = (pcap_header_t *)(writer->localbuf[THISBUF(writer)] +
             writer->offset[THISBUF(writer)]);
 
-    pcaphdr->ts_sec = (uint32_t)(erfts >> 32);
-    pcaphdr->ts_usec = (uint32_t)(((erfts & 0xFFFFFFFF) * 1000000) >> 32);
+    pcaphdr->ts_sec = (uint32_t)(ts >> 32);
+    pcaphdr->ts_usec = (uint32_t)(((ts & 0xFFFFFFFF) * 1000000) >> 32);
 
     while (pcaphdr->ts_usec >= 1000000) {
         pcaphdr->ts_usec -= 1000000;
         pcaphdr->ts_sec ++;
     }
 
-    pcaphdr->caplen = pcapcaplen;
+    pcaphdr->caplen = caplen;
+    pcaphdr->wirelen = wirelen;
 
-    /* ERF wire length includes the Ethernet frame check sequence, pcap does
-     * not.
-     */
-    pcaphdr->wirelen = ntohs(erfptr->wlen) - 4;
 
     /* This will remove the FCS if the original packet has not been
      * snapped in any way.
@@ -536,7 +523,7 @@ int corsaro_fast_write_erf_packet(corsaro_logger_t *logger,
     /* Write the packet contents into the buffer, starting from the
      * Ethernet header */
     memcpy(writer->localbuf[THISBUF(writer)] + writer->offset[THISBUF(writer)],
-            packet->payload, pcaphdr->caplen);
+            payload, pcaphdr->caplen);
 
     writer->offset[THISBUF(writer)] += pcaphdr->caplen;
 
@@ -550,6 +537,105 @@ int corsaro_fast_write_erf_packet(corsaro_logger_t *logger,
 
     /* THISBUF is ready to be passed off to the async writer */
     return schedule_aiowrite(writer, logger);
+}
+
+#ifdef HAVE_DPDK
+
+struct dpdk_addt_hdr {
+    uint64_t timestamp;
+    uint8_t flags;
+    uint8_t direction;
+    uint8_t reserved1;
+    uint8_t reserved2;
+    uint32_t cap_len;
+};
+
+/**
+ * Get the start of the additional header that we added to a packet.
+ */
+static inline struct dpdk_addt_hdr *
+get_addt_hdr(const libtrace_packet_t *packet)
+{
+    if (!packet) {
+        fprintf(stderr, "NULL packet passed into dpdk_addt_hdr()\n");
+        return NULL;
+    }
+    if (!packet->buffer) {
+        fprintf(stderr, "NULL packet buffer passed into dpdk_addt_hdr()\n");
+        return NULL;
+    }
+    /* Our header sits straight after the mbuf header */
+    return (struct dpdk_addt_hdr *)(packet->buffer + sizeof(struct rte_mbuf));
+}
+
+int corsaro_fast_write_dpdk_packet(corsaro_logger_t *logger,
+        corsaro_fast_trace_writer_t *writer, libtrace_packet_t *packet) {
+
+    struct dpdk_addt_hdr *hdr = get_addt_hdr(packet);
+    uint16_t pcapcaplen;
+    uint16_t pcapwirelen;
+    uint64_t dpdkts;
+    uint64_t nsec = 0;
+    uint64_t sec = 0;
+
+    if (hdr == NULL) {
+        return 0;
+    }
+
+    /* Original method -- incorrect! */
+    //dpdkts = hdr->timestamp;
+
+    /* Convert DPDK timestamp to the ERF timestamp that do_async_write is
+     * expecting.
+     */
+    sec = hdr->timestamp / (uint64_t)1000000000;
+    nsec = hdr->timestamp % (uint64_t)1000000000;
+
+    dpdkts = (sec << 32) + ((nsec << 32) / 1000000000);
+    pcapcaplen = hdr->cap_len;
+
+    /* Better off to call the libtrace function here as there is a bit
+     * of calculation required here.
+     *
+     * Don't forget to subtract the CRC!
+     */
+    pcapwirelen = trace_get_wire_length(packet) - 4;
+
+    return do_async_write(logger, writer, (uint8_t *)(packet->payload),
+            dpdkts, pcapcaplen, pcapwirelen);
+}
+
+#endif
+
+int corsaro_fast_write_erf_packet(corsaro_logger_t *logger,
+        corsaro_fast_trace_writer_t *writer, libtrace_packet_t *packet) {
+
+    dag_record_t *erfptr;
+    uint16_t pcapcaplen;
+    uint16_t pcapwirelen;
+    uint64_t erfts;
+
+    erfptr = (dag_record_t *)packet->header;
+
+#if __BYTE_ORDER == __BIG_ENDIAN
+    erfts = BYTESWAP64(erfptr->ts);
+#else
+    erfts = erfptr->ts;
+#endif
+
+    /* 18 = ERF header length + 2 bytes of padding */
+    /* XXX if we ever start using ERF extension headers, we will also need to
+     * account for those in this calculation.
+     */
+    pcapcaplen = ntohs(erfptr->rlen) - CORSARO_ERF_ETHERNET_FRAMING;
+
+    /* ERF wire length includes the Ethernet frame check sequence, pcap does
+     * not.
+     */
+    pcapwirelen = ntohs(erfptr->wlen) - 4;
+
+    return do_async_write(logger, writer, (uint8_t *)(packet->payload),
+            erfts, pcapcaplen, pcapwirelen);
 }
 
 // vim: set sw=4 tabstop=4 softtabstop=4 expandtab :

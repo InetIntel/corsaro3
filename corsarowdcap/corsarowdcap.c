@@ -282,7 +282,7 @@ char *corsaro_wdcap_derive_output_name(corsaro_wdcap_global_t *glob,
     if (needformat) {
         /* Prepend the format -- libtrace output URIs must contain the format
          * but input URIs do not necessarily need it. */
-        w = stradd(format, scratch, end);
+        w = stradd(format, scratch, end-1);
         *w++ = ':';
     } else {
         w = scratch;
@@ -741,10 +741,17 @@ static libtrace_packet_t *per_packet(libtrace_t *trace, libtrace_thread_t *t,
 
     /* Write the packet to the interim file using asynchronous I/O */
 	tls->last_ts = ptv.tv_sec;
-	if (corsaro_fast_write_erf_packet(glob->logger, tls->writer,
-            packet) < 0) {
-		corsaro_halted = 1;
-	}
+    if (glob->is_dpdk) {
+    	if (corsaro_fast_write_dpdk_packet(glob->logger, tls->writer,
+                packet) < 0) {
+		    corsaro_halted = 1;
+    	}
+    } else {
+    	if (corsaro_fast_write_erf_packet(glob->logger, tls->writer,
+                packet) < 0) {
+		    corsaro_halted = 1;
+    	}
+    }
 	return packet;
 }
 
@@ -764,6 +771,12 @@ static int start_trace_input(corsaro_wdcap_global_t *glob) {
         corsaro_log(glob->logger, "unable to create trace object: %s",
                 err.problem);
         return -1;
+    }
+
+    if (strncmp(glob->inputuri, "dpdk:", 5) == 0) {
+        glob->is_dpdk = 1;
+    } else {
+        glob->is_dpdk = 0;
     }
 
     trace_set_perpkt_threads(glob->trace, glob->threads);

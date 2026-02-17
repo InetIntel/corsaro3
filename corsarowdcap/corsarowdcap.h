@@ -164,6 +164,11 @@ typedef struct corsaro_wdcap_global {
     /** A libtrace filter handle for the active BPF filter */
     libtrace_filter_t *filter;
 
+    /** Flag that signifies whether to use the DPDK fast write method instead
+     *  of the ERF one
+     */
+    uint8_t is_dpdk;
+
     /** The number of libtrace processing threads to use for reading
      *  packets from the input source.
      */
