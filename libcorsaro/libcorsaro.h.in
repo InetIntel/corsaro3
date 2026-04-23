@@ -114,7 +114,8 @@ typedef enum {
     CORSARO_OUTPUT_AVRO,
     CORSARO_OUTPUT_LIBTIMESERIES,
     CORSARO_OUTPUT_KAFKA,
-    CORSARO_OUTPUT_TRACE
+    CORSARO_OUTPUT_TRACE,
+    CORSARO_OUTPUT_CSV
 } corsaro_output_format_t;
 
 typedef enum corsaro_result_type {

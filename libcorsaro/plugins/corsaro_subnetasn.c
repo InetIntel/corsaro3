@@ -17,6 +17,7 @@
 #include <libipmeta.h>
 #include <limits.h>
 #include <zlib.h>
+#include "libcorsaro_libtimeseries.h"
 #define CORSARO_SUBNETASN_DEFAULT_PROVIDER "pfx2as"
 
 typedef struct subnet_asn_entry {
@@ -25,12 +26,15 @@ typedef struct subnet_asn_entry {
 } subnet_asn_entry_t;
 
 KHASH_MAP_INIT_INT(subnet, subnet_asn_entry_t *)
+KHASH_MAP_INIT_INT(asn_count, uint64_t)
 
 typedef struct corsaro_subnetasn_config {
   corsaro_plugin_proc_options_t basic;
   char *asn_provider;
   char *asn_provider_args;
   char *output_dir;
+  corsaro_output_format_t outformat;
+  char *outlabel;
 } corsaro_subnetasn_config_t;
 
 typedef struct corsaro_subnetasn_state {
@@ -43,6 +47,9 @@ typedef struct corsaro_subnetasn_state {
 typedef struct corsaro_subnetasn_merge_state {
   khash_t(subnet) * subnet_hash;
   uint32_t timestamp;
+  timeseries_t *timeseries;
+  timeseries_kp_t *kp;
+  Pvoid_t metrickp_keys;
 } corsaro_subnetasn_merge_state_t;
 
 static corsaro_plugin_t corsaro_subnetasn_plugin = {
@@ -93,6 +100,8 @@ int corsaro_subnetasn_parse_config(corsaro_plugin_t *p, yaml_document_t *doc,
 
   CORSARO_INIT_PLUGIN_PROC_OPTS(conf->basic);
   conf->asn_provider = strdup(CORSARO_SUBNETASN_DEFAULT_PROVIDER);
+  conf->outformat = CORSARO_OUTPUT_CSV;
+  conf->outlabel = NULL;
 
   if (options->type != YAML_MAPPING_NODE) {
     corsaro_log(p->logger, "subnetasn plugin config must be a map.");
@@ -120,6 +129,18 @@ int corsaro_subnetasn_parse_config(corsaro_plugin_t *p, yaml_document_t *doc,
         free(conf->output_dir);
       }
       conf->output_dir = strdup(val_str);
+    } else if (!strcmp(key_str, "output_format")) {
+      if (!strcmp(val_str, "csv")) {
+        conf->outformat = CORSARO_OUTPUT_CSV;
+      } else if (!strcmp(val_str, "libtimeseries")) {
+        conf->outformat = CORSARO_OUTPUT_LIBTIMESERIES;
+      } else {
+        corsaro_log(p->logger, "subnetasn: unknown output format '%s', using csv", val_str);
+        conf->outformat = CORSARO_OUTPUT_CSV;
+      }
+    } else if (!strcmp(key_str, "output_row_label")) {
+      if (conf->outlabel) free(conf->outlabel);
+      conf->outlabel = strdup(val_str);
     }
   }
 
@@ -134,6 +155,12 @@ int corsaro_subnetasn_finalise_config(corsaro_plugin_t *p,
   corsaro_subnetasn_config_t *conf = (corsaro_subnetasn_config_t *)p->config;
   conf->basic.template = stdopts->template;
   conf->basic.monitorid = stdopts->monitorid;
+  conf->basic.libtskafka = stdopts->libtskafka;
+
+  if (conf->outlabel == NULL && conf->basic.monitorid != NULL) {
+    conf->outlabel = strdup(conf->basic.monitorid);
+  }
+
   return 0;
 }
 
@@ -149,6 +176,9 @@ void corsaro_subnetasn_destroy_self(corsaro_plugin_t *p)
     }
     if (conf->output_dir) {
       free(conf->output_dir);
+    }
+    if (conf->outlabel) {
+      free(conf->outlabel);
     }
     free(conf);
     p->config = NULL;
@@ -314,12 +344,36 @@ char *corsaro_subnetasn_derive_output_name(corsaro_plugin_t *p, void *local,
 
 void *corsaro_subnetasn_init_merging(corsaro_plugin_t *p, int sources)
 {
+  corsaro_subnetasn_config_t *conf = (corsaro_subnetasn_config_t *)p->config;
   corsaro_subnetasn_merge_state_t *state =
     calloc(1, sizeof(corsaro_subnetasn_merge_state_t));
   if (!state) {
     return NULL;
   }
   state->subnet_hash = kh_init(subnet);
+
+  if (conf->outformat == CORSARO_OUTPUT_LIBTIMESERIES) {
+    state->timeseries = timeseries_init();
+    if (state->timeseries == NULL) {
+      corsaro_log(p->logger, "subnetasn: unable to initialize libtimeseries");
+      kh_destroy(subnet, state->subnet_hash);
+      free(state);
+      return NULL;
+    }
+    if (enable_libts_kafka_backend(p->logger, state->timeseries, conf->basic.libtskafka) != 0) {
+      corsaro_log(p->logger, "subnetasn: unable to enable kafka backend");
+    }
+    state->kp = timeseries_kp_init(state->timeseries, TIMESERIES_KP_RESET);
+    if (state->kp == NULL) {
+      corsaro_log(p->logger, "subnetasn: unable to initialize libtimeseries key package");
+      timeseries_free(&(state->timeseries));
+      kh_destroy(subnet, state->subnet_hash);
+      free(state);
+      return NULL;
+    }
+    state->metrickp_keys = (Pvoid_t)NULL;
+  }
+
   return state;
 }
 
@@ -329,6 +383,14 @@ int corsaro_subnetasn_halt_merging(corsaro_plugin_t *p, void *local)
     (corsaro_subnetasn_merge_state_t *)local;
   if (state) {
     destroy_subnet_hash(state->subnet_hash);
+    if (state->timeseries) {
+      timeseries_kp_free(&(state->kp));
+      timeseries_free(&(state->timeseries));
+    }
+    if (state->metrickp_keys) {
+      Word_t freed;
+      JLFA(freed, state->metrickp_keys);
+    }
     free(state);
   }
   return 0;
@@ -420,43 +482,94 @@ int corsaro_subnetasn_rotate_output(corsaro_plugin_t *p, void *local)
   corsaro_subnetasn_merge_state_t *mstate =
     (corsaro_subnetasn_merge_state_t *)local;
   corsaro_subnetasn_config_t *conf = (corsaro_subnetasn_config_t *)p->config;
-  gzFile f;
   uint32_t subnet_key;
   subnet_asn_entry_t *entry;
-  struct in_addr addr;
 
   if (!mstate || kh_size(mstate->subnet_hash) == 0) {
     return 0;
   }
 
-  char filename[PATH_MAX];
-  if (conf->output_dir) {
-    snprintf(filename, sizeof(filename), "%s/%s_%u_subnetasn.csv.gz",
-             conf->output_dir,
-             conf->basic.monitorid ? conf->basic.monitorid : "unknown",
-             mstate->timestamp);
-  } else {
-    snprintf(filename, sizeof(filename), "%s_%u_subnetasn.csv.gz",
-             conf->basic.monitorid ? conf->basic.monitorid : "unknown",
-             mstate->timestamp);
-  }
-
-  f = gzopen(filename, "wb");
-  if (!f) {
-    corsaro_log(p->logger, "Failed to open output file %s", filename);
-    return -1;
-  }
+  /* Aggregate asn -> unique subnet count */
+  khash_t(asn_count) *ac = kh_init(asn_count);
+  khiter_t k_ac;
+  int ret;
 
   kh_foreach(mstate->subnet_hash, subnet_key, entry, {
-    addr.s_addr = htonl(subnet_key);
-    char *ip_str = inet_ntoa(addr);
     for (int i = 0; i < entry->asn_cnt; i++) {
-      gzprintf(f, "%u,%s\n", entry->asns[i], ip_str);
+      uint32_t asn = entry->asns[i];
+      k_ac = kh_put(asn_count, ac, asn, &ret);
+      if (ret == 0) {
+        kh_value(ac, k_ac)++;
+      } else {
+        kh_value(ac, k_ac) = 1;
+      }
     }
   });
 
-  gzclose(f);
+  if (conf->outformat == CORSARO_OUTPUT_CSV) {
+    gzFile f;
+    char filename[PATH_MAX];
+    struct in_addr addr;
 
+    if (conf->output_dir) {
+      snprintf(filename, sizeof(filename), "%s/%s_%u_subnetasn.csv.gz",
+               conf->output_dir,
+               conf->basic.monitorid ? conf->basic.monitorid : "unknown",
+               mstate->timestamp);
+    } else {
+      snprintf(filename, sizeof(filename), "%s_%u_subnetasn.csv.gz",
+               conf->basic.monitorid ? conf->basic.monitorid : "unknown",
+               mstate->timestamp);
+    }
+
+    f = gzopen(filename, "wb");
+    if (!f) {
+      corsaro_log(p->logger, "Failed to open output file %s", filename);
+      kh_destroy(asn_count, ac);
+      return -1;
+    }
+
+    kh_foreach(mstate->subnet_hash, subnet_key, entry, {
+      addr.s_addr = htonl(subnet_key);
+      char *ip_str = inet_ntoa(addr);
+      for (int i = 0; i < entry->asn_cnt; i++) {
+        gzprintf(f, "%u,%s\n", entry->asns[i], ip_str);
+      }
+    });
+
+    gzclose(f);
+  }
+
+  if (conf->outformat == CORSARO_OUTPUT_LIBTIMESERIES && mstate->kp) {
+    uint32_t asn;
+    uint64_t count;
+    char keyname[512];
+    PWord_t pval;
+
+    kh_foreach(ac, asn, count, {
+      snprintf(keyname, 512, "subnetasn.%s.%u", conf->outlabel, asn);
+
+      JLG(pval, mstate->metrickp_keys, (Word_t)asn);
+      int keyid = -1;
+      if (pval == NULL) {
+        keyid = timeseries_kp_add_key(mstate->kp, keyname);
+        if (keyid != -1) {
+          JLI(pval, mstate->metrickp_keys, (Word_t)asn);
+          *pval = (Word_t)keyid;
+        }
+      } else {
+        keyid = (int)*pval;
+      }
+
+      if (keyid != -1) {
+        timeseries_kp_set(mstate->kp, keyid, count);
+      }
+    });
+
+    timeseries_kp_flush(mstate->kp, mstate->timestamp);
+  }
+
+  kh_destroy(asn_count, ac);
   destroy_subnet_hash(mstate->subnet_hash);
   mstate->subnet_hash = kh_init(subnet);
 
