@@ -83,10 +83,12 @@
 #  define SIMPLE_FUNCTION
 #endif
 
+#ifndef PRINTF
 #if CORSARO_USE_PRINTF
 #  define PRINTF(formatpos, argpos) __attribute__((format(printf,formatpos, argpos)))
 #else
 #  define PRINTF(formatpos, argpos)
+#endif
 #endif
 
 /** The framing length of ERF ethernet packets (ERF header len + 2
@@ -112,7 +114,8 @@ typedef enum {
     CORSARO_OUTPUT_AVRO,
     CORSARO_OUTPUT_LIBTIMESERIES,
     CORSARO_OUTPUT_KAFKA,
-    CORSARO_OUTPUT_TRACE
+    CORSARO_OUTPUT_TRACE,
+    CORSARO_OUTPUT_CSV
 } corsaro_output_format_t;
 
 typedef enum corsaro_result_type {

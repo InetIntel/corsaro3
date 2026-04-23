@@ -20,6 +20,10 @@ if WITH_PLUGIN_DOS
 PLUGIN_SRC+=corsaro_dos.c corsaro_dos.h
 endif
 
+if WITH_PLUGIN_SUBNETASN
+PLUGIN_SRC+=corsaro_subnetasn.c corsaro_subnetasn.h
+endif
+
 if WITH_PLUGIN_REPORT
 PLUGIN_SRC+=report/corsaro_report.c report/corsaro_report.h
 PLUGIN_SRC+=report/iptracker_thread.c report/merging_thread.c

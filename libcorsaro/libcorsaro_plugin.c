@@ -60,6 +60,10 @@
 #include "corsaro_dos.h"
 #endif
 
+#ifdef WITH_PLUGIN_SUBNETASN
+#include "corsaro_subnetasn.h"
+#endif
+
 #ifdef WITH_PLUGIN_REPORT
 #include "report/corsaro_report.h"
 #endif
